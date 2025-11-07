@@ -85,21 +85,21 @@ class Simulation:
         if self.config.num_save > 0:
             save_step = self.domain.Nz // self.config.num_save
 
-        self.spatial_intensities = torch.zeros((2, self.domain.Nx // 2, self.domain.Ny // 2), device=self.device, dtype=torch.float32) # input and output
+        # self.spatial_intensities = torch.zeros((2, self.domain.Nx // 2, self.domain.Ny // 2), device=self.device, dtype=torch.float32) # input and output
         self.spatiotemporal_fields = torch.zeros((2, self.domain.Nx // 2, self.domain.Ny // 2, self.domain.Nt // 2), device=self.device, dtype=fields.dtype) # input and output
-        self.spatial_intensities_sequential = torch.zeros((self.config.num_save+1, self.domain.Nx // 2, self.domain.Ny // 2), device=self.device, dtype=torch.float32) # input + num_save
+        # self.spatial_intensities_sequential = torch.zeros((self.config.num_save+1, self.domain.Nx // 2, self.domain.Ny // 2), device=self.device, dtype=torch.float32) # input + num_save
 
         self.spatiotemporal_fields[0, :, :, :] = fields[::2, ::2, ::2]
-        self.spatial_intensities[0, :, :] = torch.sum(torch.abs(fields[::2, ::2, ::2])**2, axis=2)
+        # self.spatial_intensities[0, :, :] = torch.sum(torch.abs(fields[::2, ::2, ::2])**2, axis=2)
         fields = torch.fft.fftn(fields)
 
         for i in tqdm(range(self.domain.Nz), disable=is_slurm_job):
-            if self.config.num_save > 0 and i % save_step == 0:
-                spatial_fields = torch.fft.ifftn(fields)
-                spatial_fields = torch.sum(torch.abs(spatial_fields)**2, axis=2)
-                spatial_fields = spatial_fields[::2, ::2]
-                self.spatial_intensities_sequential[self.cnt, :, :] = spatial_fields
-                self.cnt += 1
+            # if self.config.num_save > 0 and i % save_step == 0:
+            #     spatial_fields = torch.fft.ifftn(fields)
+            #     spatial_fields = torch.sum(torch.abs(spatial_fields)**2, axis=2)
+            #     spatial_fields = spatial_fields[::2, ::2]
+            #     self.spatial_intensities_sequential[self.cnt, :, :] = spatial_fields
+            #     self.cnt += 1
             # if i % save_step_xz == 0:
             #     self.fields_xz[self.cnt_xz] = torch.fft.ifftn(fields,)[:, fields.shape[1]//2, fields.shape[2]//2]
             #     self.cnt_xz += 1
@@ -115,5 +115,5 @@ class Simulation:
 
 
         self.spatiotemporal_fields[1, :, :, :] = fields[::2, ::2, ::2]
-        self.spatial_intensities[1, :, :] = torch.sum(torch.abs(fields[::2, ::2, ::2])**2, axis=2)
-        self.spatial_intensities_sequential[self.cnt, :, :] = self.spatial_intensities[1, :, :]
+        # self.spatial_intensities[1, :, :] = torch.sum(torch.abs(fields[::2, ::2, ::2])**2, axis=2)
+        # self.spatial_intensities_sequential[self.cnt, :, :] = self.spatial_intensities[1, :, :]

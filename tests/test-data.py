@@ -1,20 +1,28 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-data = np.load('./data_all.npz')
-print(data['spatiotemporal_fields'].shape)
-print(data['spatial_intensities'].shape)
-print(data['spatial_intensities_sequential'].shape)
+spatiotemporal_data = np.load('spatiotemporal_fields_2.npy')
 
-spatial_intensities_sequential = data['spatial_intensities_sequential']
-spatiotemporal_fields = data['spatiotemporal_fields']
-spatial_intensities = data['spatial_intensities']
+print(spatiotemporal_data.shape)
+print(spatiotemporal_data.dtype)
 
-plt.subplots(1, 2, figsize=(10, 5))
-plt.subplot(1, 2, 1)
-plt.imshow(spatial_intensities_sequential[0, 0, :, :], cmap='turbo')
-plt.colorbar()
-plt.subplot(1, 2, 2)
-plt.imshow(spatial_intensities_sequential[0, -1, :, :], cmap='turbo')
-plt.colorbar()
+target_input = spatiotemporal_data[0, 0,]
+target_output = spatiotemporal_data[0, 1,]
+target_input2 = spatiotemporal_data[1, 0,]
+target_output2 = spatiotemporal_data[1, 1,]
+
+# use only center of temporal profile
+
+# integrate spatial domain to get temporal profile
+input_temporal_profile = np.sum(np.abs(target_input)**2, axis=(0,1))
+output_temporal_profile = np.sum(np.abs(target_output)**2, axis=(0,1))
+input_temporal_profile2 = np.sum(np.abs(target_input2)**2, axis=(0,1))
+output_temporal_profile2 = np.sum(np.abs(target_output2)**2, axis=(0,1))
+# plot temporal profile
+plt.figure(figsize=(10, 5))
+plt.plot(input_temporal_profile, label='input')
+plt.plot(output_temporal_profile, label='output')
+plt.plot(input_temporal_profile2, label='input2')
+plt.plot(output_temporal_profile2, label='output2')
+plt.legend()
 plt.show()

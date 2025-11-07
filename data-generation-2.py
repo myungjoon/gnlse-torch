@@ -25,7 +25,7 @@ SELF_STEEPING = False
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-device_id = 1
+device_id = 0
 device = torch.device(f'cuda:{device_id}' if torch.cuda.is_available() else 'cpu')
 
 precision = 'single'
@@ -115,7 +115,7 @@ all_spatiotemporal_fields = np.stack(all_spatiotemporal_fields, axis=0)  # shape
 # all_spatial_intensities = np.stack(all_spatial_intensities, axis=0)
 # all_spatial_intensities_sequential = np.stack(all_spatial_intensities_sequential, axis=0)
 
-np.save('spatiotemporal_fields_2.npy', all_spatiotemporal_fields)
+np.save('spatiotemporal_fields_1.npy', all_spatiotemporal_fields)
 
 # np.savez('data_all_300.npz', 
 #          spatiotemporal_fields=all_spatiotemporal_fields, 
