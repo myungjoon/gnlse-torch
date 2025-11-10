@@ -1,15 +1,19 @@
 import numpy as np
+import os
 
 
-data_1 = np.load('data_all_100.npz')
-data_2 = np.load('data_all_200.npz')
-
-total_spatiotemporal_fields = np.concatenate([data_1['spatiotemporal_fields'], data_2['spatiotemporal_fields']], axis=0)
-total_spatial_intensities = np.concatenate([data_1['spatial_intensities'], data_2['spatial_intensities']], axis=0)
-total_spatial_intensities_sequential = np.concatenate([data_1['spatial_intensities_sequential'], data_2['spatial_intensities_sequential']], axis=0)
+# current directory change to the directory of the file
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 
-# save three different npy files
-np.save('spatiotemporal_fields.npy', total_spatiotemporal_fields)
-np.save('spatial_intensities.npy', total_spatial_intensities)
-np.save('spatial_intensities_sequential.npy', total_spatial_intensities_sequential)
+data_1 = np.load('spatiotemporal_fields_2.npy')
+print(f'The shape of data_1 is {data_1.shape}')
+data_2 = np.load('spatiotemporal_fields_3.npy')
+print(f'The shape of data_2 is {data_2.shape}')
+data_3 = np.load('spatiotemporal_fields_4.npy')
+print(f'The shape of data_3 is {data_3.shape}')
+
+total_spatiotemporal_fields = np.concatenate([data_1, data_2, data_3], axis=0)
+print(f'The total number of spatiotemporal fields is {total_spatiotemporal_fields.shape[0]}')
+
+np.save('spatiotemporal_fields_1cm.npy', total_spatiotemporal_fields)

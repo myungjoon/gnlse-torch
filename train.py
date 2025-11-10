@@ -36,19 +36,19 @@ class SpectralConv3d(nn.Module):
 
     def forward(self, x):
         B, C, X, Y, T = x.shape
-        x_ft = torch.fft.fftn(x, dim=(-3, -2, -1))  # 3D FFT over (x, y, t)
-        out_ft = torch.zeros(B, self.out_channels, X, Y, T, dtype=torch.cfloat, device=x.device)
+        x = torch.fft.fftn(x, dim=(-3, -2, -1))  # 3D FFT over (x, y, t)
+        out = torch.zeros(B, self.out_channels, X, Y, T, dtype=torch.cfloat, device=x.device)
 
         # Only keep low-frequency modes
-        out_ft[:, :, :self.modes_x, :self.modes_y, :self.modes_t] = \
-            self.compl_mul3d(x_ft[:, :, :self.modes_x, :self.modes_y, :self.modes_t],
+        out[:, :, :self.modes_x, :self.modes_y, :self.modes_t] = \
+            self.compl_mul3d(x[:, :, :self.modes_x, :self.modes_y, :self.modes_t],
                              self.weight)
 
         # iFFT back to real space
-        x_out = torch.fft.ifftn(out_ft, dim=(-3, -2, -1))
+        out = torch.fft.ifftn(out, dim=(-3, -2, -1))
         if self.bias is not None:
-            x_out = x_out + self.bias.view(1, -1, 1, 1, 1)
-        return x_out.real  # real tensor for next layers (split real/imag separately later if needed)
+            out = out + self.bias.view(1, -1, 1, 1, 1)
+        return out.real  # real tensor for next layers (split real/imag separately later if needed)
 
 
 # ========================
@@ -99,21 +99,30 @@ if __name__ == "__main__":
     model = FNO3D(
         in_channels=2,        # Re/Im
         out_channels=2,       # Re/Im
-        width=32,             # internal width
+        width=16,             # internal width
         n_layers=4,           # number of Fourier blocks
-        modes=(12, 12, 12)     # number of Fourier modes in x, y, t
+        modes=(10, 10, 12)     # number of Fourier modes in x, y, t
     ).to(device)
 
-    data = np.load('spatiotemporal_fields_1000.npy')
-    print(data.shape)
+    data = np.load('spatiotemporal_fields_1cm.npy',)
+    print(f'The shape of data is {data.shape}')
+    print(f'The dtype of data is {data.dtype}')
 
     input_data = data[:, :1, :, :, :]
     output_data = data[:, 1:, :, :, :]
 
-    #complex dtype to real dtype, [M, 1, X, Y, T] -> [M, 2, X, Y, T] 1 to 2 is complex to real/imag, input_data is already complex, numpy type
-    input_data = np.concatenate([input_data.real, input_data.imag], axis=1)
-    output_data = np.concatenate([output_data.real, output_data.imag], axis=1)
-    print(input_data.shape, output_data.shape)
+    train_input_data = input_data[0:900]
+    train_output_data = output_data[0:900]
+    test_input_data = input_data[900:1000]
+    test_output_data = output_data[900:1000]
+
+    #complex dtype to real dtype with split real and imag, [M, 1, X, Y, T] -> [M, 2, X, Y, T]
+    train_input_data = np.concatenate([train_input_data.real, train_input_data.imag], axis=1)
+    train_output_data = np.concatenate([train_output_data.real, train_output_data.imag], axis=1)
+    test_input_data = np.concatenate([test_input_data.real, test_input_data.imag], axis=1)
+    test_output_data = np.concatenate([test_output_data.real, test_output_data.imag], axis=1)
+    print(train_input_data.shape, train_output_data.shape)
+    print(test_input_data.shape, test_output_data.shape)
 
     # plt.figure(figsize=(5, 5))
     # data0 = input_data[0, ..., 128]
@@ -123,45 +132,53 @@ if __name__ == "__main__":
     # plt.savefig('data0_intensity.png', dpi=300)
     
     total_loss = 0
-
-
-    batch_size = 2
+    batch_size = 6
     # optimizer : Adam, loss : relative MAE (normalized by the ground truth)
     optimizer = optim.Adam(model.parameters(), lr=0.01)
     loss_fn = nn.L1Loss()
-    epochs = 200
+
+    epochs = 50
     total_loss_list = []
+    total_test_loss_list = []
     for epoch in range(epochs):
-        for i in range(0, input_data.shape[0], batch_size):
-            inp = torch.tensor(input_data[i:i+batch_size], device=device)
-            target = torch.tensor(output_data[i:i+batch_size], device=device)
+        model.train()
+        for i in range(0, train_input_data.shape[0], batch_size):
+            inp = torch.tensor(train_input_data[i:i+batch_size], device=device)
+            target = torch.tensor(train_output_data[i:i+batch_size], device=device)
             out = model(inp)
             loss = loss_fn(out, target) / torch.mean(torch.abs(target))
             total_loss = total_loss + loss.item()             
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-
-
-
-        print(f"Epoch {epoch}, Loss: {total_loss / 5}")
-        total_loss_list.append(total_loss / 5)
+        
+        model.eval()
+        with torch.no_grad():
+            test_input = torch.tensor(test_input_data, device=device)
+            test_target = torch.tensor(test_output_data, device=device)
+            test_out = model(test_input)
+            test_loss = loss_fn(test_out, test_target) / torch.mean(torch.abs(test_target))
+            total_test_loss = total_test_loss + test_loss.item()
+            
+        print(f"Epoch {epoch}, Train Loss: {total_loss / 900}, Test Loss: {total_test_loss / 100}")
+        total_loss_list.append(total_loss / 900)
+        total_test_loss_list.append(total_test_loss / 100)
         total_loss = 0
+        total_test_loss = 0
     
 
-    input_data = torch.tensor(input_data[0:2], device=device)
-    pred = model(input_data)
+    test_input_data = torch.tensor(test_input_data[0:2], device=device)
+    pred = model(test_input_data)
 
     pred_np = pred.detach().cpu().numpy()
-    output_np_real = output_data[0, 0, :, :, 128]
+    output_np_real = test_output_data[0, 0, :, :, 128]
     pred_np_real = pred_np[0, 0, :, :, 128]
     
-    output_np_imag = output_data[0, 1, :, :, 128]
+    output_np_imag = test_output_data[0, 1, :, :, 128]
     pred_np_imag = pred_np[0, 1, :, :, 128]
 
     output_intensity = np.sqrt(output_np_real**2 + output_np_imag**2)
     pred_intensity = np.sqrt(pred_np_real**2 + pred_np_imag**2)
-
 
 
 
