@@ -173,6 +173,9 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# computing server
+slurm/
+
 *.npz
 *.npy
 *.mat

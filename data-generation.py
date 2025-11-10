@@ -25,7 +25,7 @@ SELF_STEEPING = False
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-device_id = 1
+device_id = 0
 device = torch.device(f'cuda:{device_id}' if torch.cuda.is_available() else 'cpu')
 
 precision = 'single'
@@ -33,11 +33,10 @@ precision = 'single'
 num_save = 100
 
 wvl0 = 1030e-9
-L0 = 0.01 # 1 cm
+L0 = 0.05 # 1 cm
 
 
-# total_energy = 38 # nJ
-# total energy from 0.1 to 50 nJ, randmo
+# total energy from 0.1 to 50 nJ, random
 
 
 
@@ -87,7 +86,7 @@ all_spatiotemporal_fields = []
 all_spatial_intensities = []
 all_spatial_intensities_sequential = []
 
-num_data = 100
+num_data = 500
 
 for n in range(num_data):
     coefficients = torch.randn(10, dtype=torch.complex64)
@@ -99,7 +98,7 @@ for n in range(num_data):
     input = Fields(domain, input_type='custom', fields=mode_fields, tfwhm=tfwhm, total_energy=total_energy, t_center=0,) # spatially gaussian and gaussian pulse
     sim = Simulation(domain, fiber, input, boundary, config)
 
-    print(f'The simulation {n} starts.')
+    print(f'The simulation {n} starts.', flush=True)
     sim.run()
 
     spatiotemporal_fields = sim.spatiotemporal_fields.cpu().numpy()
@@ -115,7 +114,7 @@ all_spatiotemporal_fields = np.stack(all_spatiotemporal_fields, axis=0)  # shape
 # all_spatial_intensities = np.stack(all_spatial_intensities, axis=0)
 # all_spatial_intensities_sequential = np.stack(all_spatial_intensities_sequential, axis=0)
 
-np.save('spatiotemporal_fields_2.npy', all_spatiotemporal_fields)
+np.save('spatiotemporal_fields_5cm_500.npy', all_spatiotemporal_fields)
 
 # np.savez('data_all_300.npz', 
 #          spatiotemporal_fields=all_spatiotemporal_fields, 
