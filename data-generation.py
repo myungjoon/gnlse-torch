@@ -39,7 +39,6 @@ L0 = 0.05 # 1 cm
 # total energy from 0.1 to 50 nJ, random
 
 
-
 # Beam customization
 # First 10 modes
 
@@ -106,18 +105,7 @@ for n in range(num_data):
     # spatial_intensities_sequential = sim.spatial_intensities_sequential.cpu().numpy()
 
     all_spatiotemporal_fields.append(spatiotemporal_fields)
-    # all_spatial_intensities.append(spatial_intensities)
-    # all_spatial_intensities_sequential.append(spatial_intensities_sequential)
 
-# After all iterations, stack and save a single file
 all_spatiotemporal_fields = np.stack(all_spatiotemporal_fields, axis=0)  # shape: (10, ...)
-# all_spatial_intensities = np.stack(all_spatial_intensities, axis=0)
-# all_spatial_intensities_sequential = np.stack(all_spatial_intensities_sequential, axis=0)
 
-np.save('spatiotemporal_fields_5cm_500.npy', all_spatiotemporal_fields)
-
-# np.savez('data_all_300.npz', 
-#          spatiotemporal_fields=all_spatiotemporal_fields, 
-#          spatial_intensities=all_spatial_intensities, 
-#          spatial_intensities_sequential=all_spatial_intensities_sequential)
-
+np.save('spatiotemporal_fields_2.npy', all_spatiotemporal_fields)

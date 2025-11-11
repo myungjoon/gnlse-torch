@@ -182,3 +182,5 @@ slurm/
 .DS_Store
 /data
 *.pdf
+*.pth
+*.png
