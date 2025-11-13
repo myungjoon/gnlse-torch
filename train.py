@@ -2,10 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
-
-import torch
-import torch.nn as nn
 import torch.fft
 
 import os
@@ -70,8 +66,8 @@ class FNO3DBlock(nn.Module):
 # 3D FNO Model
 # ========================
 class FNO3D(nn.Module):
-    def __init__(self, in_channels=2, out_channels=2, width=64, n_layers=4,
-                 modes=(12, 12, 8)):
+    def __init__(self, in_channels=2, out_channels=2, width=32, n_layers=4,
+                 modes=(12, 12, 12)):
         super().__init__()
         self.input_proj = nn.Conv3d(in_channels, width, 1)
         self.fno_layers = nn.ModuleList([
@@ -96,25 +92,44 @@ class FNO3D(nn.Module):
 # ========================
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = FNO3D(
-        in_channels=2,        # Re/Im
-        out_channels=2,       # Re/Im
-        width=16,             # internal width
-        n_layers=4,           # number of Fourier blocks
-        modes=(10, 10, 12)     # number of Fourier modes in x, y, t
-    ).to(device)
+    
+   
 
-    data = np.load('spatiotemporal_fields_1cm.npy',)
-    print(f'The shape of data is {data.shape}', flush=True)
-    print(f'The dtype of data is {data.dtype}', flush=True)
+    # model = FNO3D(
+    #     in_channels=2,        # Re/Im
+    #     out_channels=2,       # Re/Im
+    #     width=32,             # internal width
+    #     n_layers=4,           # number of Fourier blocks
+    #     modes=(12, 12, 12)     # number of Fourier modes in x, y, t
+    # ).to(device)
+
+    data = np.load('spatiotemporal_fields_10cm_total.npy',)
+    # print(f'The shape of data is {data.shape}', flush=True)
+    # print(f'The dtype of data is {data.dtype}', flush=True)
+
+
+    # all_data = []
+    # for file in data_files:
+    #     d = np.load(file)
+    #    all_data.append(d)
+    #   print(f"{file} loaded, shape: {d.shape}")
 
     input_data = data[:, :1, :, :, :]
     output_data = data[:, 1:, :, :, :]
 
-    train_input_data = input_data[0:900]
-    train_output_data = output_data[0:900]
-    test_input_data = input_data[900:1000]
-    test_output_data = output_data[900:1000]
+    num_data = data.shape[0]
+    n_train = int(num_data*0.9)
+    n_test = num_data - n_train
+
+
+   
+
+    print(f'train : {n_train}, test : {n_test}')
+
+    train_input_data = input_data[0:n_train]
+    train_output_data = output_data[0:n_train]
+    test_input_data = input_data[n_train:]
+    test_output_data = output_data[n_train:]
 
     #complex dtype to real dtype with split real and imag, [M, 1, X, Y, T] -> [M, 2, X, Y, T]
     train_input_data = np.concatenate([train_input_data.real, train_input_data.imag], axis=1)
@@ -124,32 +139,54 @@ if __name__ == "__main__":
     print(train_input_data.shape, train_output_data.shape, flush=True)
     print(test_input_data.shape, test_output_data.shape, flush=True)
 
-    # plt.figure(figsize=(5, 5))
-    # data0 = input_data[0, ..., 128]
-    # data0_intensity = np.sqrt(data0[0]**2 + data0[1]**2)
-    # plt.imshow(data0_intensity, cmap='turbo', vmin=0, vmax=np.max(data0_intensity))
-    # plt.colorbar()
-    # plt.savefig('data0_intensity.png', dpi=300)
+    # Hyperparameters
+    lr = 0.01
+    batch_size = 25
+    epochs = 50
+    width = 16
+    num_layers = 4
+    mode_x, mode_y, mode_t = 16, 16, 16
+
+    # Define a model
+    model = FNO3D(
+            in_channels=2,
+            out_channels=2,
+            width=width,
+            n_layers=num_layers,
+            modes=(mode_x, mode_y, mode_t),
+            ).to(device)
+
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    loss_fn = nn.MSELoss()
+
+    # Print the number of tunable parameters
+    print('Number of parameters : ',flush=True)
+    print(sum(p.numel() for p in model.parameters() if p.requires_grad))
     
     total_loss = 0
     total_test_loss = 0
-    batch_size = 15
-    # optimizer : Adam, loss : relative MAE (normalized by the ground truth)
-    optimizer = optim.Adam(model.parameters(), lr=0.01)
-    loss_fn = nn.L1Loss()
-
-    epochs = 50
+    eps = 1e-8
     total_loss_list = []
     total_test_loss_list = []
+    
+    # scaler = torch.cuda.amp.GradScaler()    
+
     for epoch in range(epochs):
         model.train()
         for i in range(0, train_input_data.shape[0], batch_size):
+            optimizer.zero_grad()
             inp = torch.tensor(train_input_data[i:i+batch_size], device=device)
             target = torch.tensor(train_output_data[i:i+batch_size], device=device)
             out = model(inp)
-            loss = loss_fn(out, target) / torch.mean(torch.abs(target))
+            loss = loss_fn(out, target) / (torch.mean(target**2) + eps)
+            # with torch.cuda.amp.autocast():
+            #     out = model(inp)        
+            #     loss = loss_fn(out, target) / (torch.mean(target**2) + eps)
             total_loss = total_loss + loss.item()             
-            optimizer.zero_grad()
+             
+            # scaler.scale(loss).backward()
+            # scaler.step(optimizer)
+            # scaler.update()        
             loss.backward()
             optimizer.step()
             print(f"Epoch {epoch}, batch {i} training complete", flush=True)
@@ -160,16 +197,16 @@ if __name__ == "__main__":
                 test_input = torch.tensor(test_input_data[i:i+batch_size], device=device)
                 test_target = torch.tensor(test_output_data[i:i+batch_size], device=device)
                 test_out = model(test_input)
-                test_loss = loss_fn(test_out, test_target) / torch.mean(torch.abs(test_target))
+                test_loss = loss_fn(test_out, test_target) / (torch.mean(test_target**2) + eps)
                 total_test_loss = total_test_loss + test_loss.item()
             
-        print(f"Epoch {epoch}, Train Loss: {total_loss / 900}, Test Loss: {total_test_loss / 100}", flush=True)
+        print(f"Epoch {epoch}, Train Loss: {total_loss / n_train}, Test Loss: {total_test_loss / n_test}", flush=True)
         total_loss_list.append(total_loss / 900)
         total_test_loss_list.append(total_test_loss / 100)
         total_loss = 0
         total_test_loss = 0
 
-    torch.save(model.state_dict(), "trained_model.pth")
+    torch.save(model.state_dict(), f"trained_model_dataset1_{int(num_data)}_{num_layers}_{width}_{mode_x}_{lr}.pth")
     print("Model parameters are saved!")
 
 
@@ -180,7 +217,6 @@ if __name__ == "__main__":
     pred_np = pred.detach().cpu().numpy()
     output_np_real = test_output_data[0, 0, :, :, 128]
     pred_np_real = pred_np[0, 0, :, :, 128]
-    
     output_np_imag = test_output_data[0, 1, :, :, 128]
     pred_np_imag = pred_np[0, 1, :, :, 128]
 
@@ -198,14 +234,14 @@ if __name__ == "__main__":
     plt.subplot(1, 2, 2)
     plt.imshow(pred_intensity, cmap='turbo', vmin=vmin, )
     plt.colorbar()
-    plt.savefig('out_np_real.png', dpi=300)
+    plt.savefig(f'pred_result_{int(num_data)}_{num_layers}_{width}_{mode_x}_{lr}.png', dpi=300)
 
     # iterations = range(len(total_loss_list))
     total_losses = np.array(total_loss_list)
     total_test_losses = np.array(total_test_loss_list)
 
-    np.save('training_loss.npy', total_losses)
-    np.save('test_loss.npy', total_test_losses)
+    np.save(f'training_loss_{int(num_data)}_{num_layers}_{width}_{mode_x}_{lr}.npy', total_losses)
+    np.save(f'test_loss_{int(num_data)}_{num_layers}_{width}_{mode_x}_{lr}.npy', total_test_losses)
     # plt.figure
     # plt.plot(iterations, total_losses)
     # plt.xlabel('Iterations')
