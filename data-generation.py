@@ -33,7 +33,7 @@ precision = 'single'
 num_save = 100
 
 wvl0 = 1030e-9
-L0 = 0.01 # 1 cm
+L0 = 1.0 # 10 cm
 
 
 # total energy from 0.1 to 50 nJ, random
@@ -85,16 +85,16 @@ all_spatiotemporal_fields = []
 all_spatial_intensities = []
 all_spatial_intensities_sequential = []
 
-num_data = 1000
+num_data = 2
 
-total_energy = 40
+total_energy = 10
+start_time = time.time()
 for n in range(num_data):
     coefficients = torch.randn(10, dtype=torch.complex64)
     coefficients = coefficients / torch.linalg.norm(coefficients)
     coefficients = coefficients.reshape((10, 1, 1)).to(device)
     mode_fields = torch.sum(coefficients * modes[:num_mode], dim=0)
 
-    # total_energy = np.random.uniform(0.1, 50) # nJ
     input = Fields(domain, input_type='custom', fields=mode_fields, tfwhm=tfwhm, total_energy=total_energy, t_center=0,) # spatially gaussian and gaussian pulse
     sim = Simulation(domain, fiber, input, boundary, config)
 
@@ -102,12 +102,14 @@ for n in range(num_data):
     sim.run()
 
     spatiotemporal_fields = sim.spatiotemporal_fields.cpu().numpy()
+    spatiotemporal_fields = spatiotemporal_fields[:, 16:112, 16:112, 32:224]
     # spatial_intensities = sim.spatial_intensities.cpu().numpy()
     # spatial_intensities_sequential = sim.spatial_intensities_sequential.cpu().numpy()
-
+    # print(spatiotemporal_fields.shape)
     all_spatiotemporal_fields.append(spatiotemporal_fields)
 
+print(f'Total calculation time : {time.time() - start_time}', flush=True)
 all_spatiotemporal_fields = np.stack(all_spatiotemporal_fields, axis=0)  # shape: (10, ...)
 
-np.save('spatiotemporal_fields_1cm_40nJ_4.npy', all_spatiotemporal_fields)
+np.save(f'spatiotemporal_fields_{int(L0*100)}cm_{total_energy}nJ_1.npy', all_spatiotemporal_fields)
 

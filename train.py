@@ -59,8 +59,8 @@ class FNO3DBlock(nn.Module):
 
     def forward(self, x):
         out = self.spectral_conv(x) + self.pointwise_conv(x)
-        return self.activation(out)
-
+        return x + self.activation(out)
+        # return self.activation(out)
 
 # ========================
 # 3D FNO Model
@@ -95,24 +95,9 @@ if __name__ == "__main__":
     
    
 
-    # model = FNO3D(
-    #     in_channels=2,        # Re/Im
-    #     out_channels=2,       # Re/Im
-    #     width=32,             # internal width
-    #     n_layers=4,           # number of Fourier blocks
-    #     modes=(12, 12, 12)     # number of Fourier modes in x, y, t
-    # ).to(device)
 
-    data = np.load('spatiotemporal_fields_10cm_total.npy',)
-    # print(f'The shape of data is {data.shape}', flush=True)
-    # print(f'The dtype of data is {data.dtype}', flush=True)
+    data = np.load('spatiotemporal_fields_1cm_40nJ_total.npy',)
 
-
-    # all_data = []
-    # for file in data_files:
-    #     d = np.load(file)
-    #    all_data.append(d)
-    #   print(f"{file} loaded, shape: {d.shape}")
 
     input_data = data[:, :1, :, :, :]
     output_data = data[:, 1:, :, :, :]
@@ -141,7 +126,7 @@ if __name__ == "__main__":
 
     # Hyperparameters
     lr = 0.01
-    batch_size = 25
+    batch_size = 20
     epochs = 50
     width = 16
     num_layers = 4
