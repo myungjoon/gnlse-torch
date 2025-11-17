@@ -6,6 +6,11 @@ import os, time
 from gnlse import Domain, GRINFiber, Fields, Boundary, Simulation, SimConfig
 from gnlse import plot_fields, plot_index_profile
 
+# seed for random number generation
+np.random.seed(42)
+torch.manual_seed(42)
+
+
 # Parameters
 # Pulse energy : 38 nJ
 # Pulse duration : 60 fs
@@ -33,7 +38,7 @@ precision = 'single'
 num_save = 100
 
 wvl0 = 1030e-9
-L0 = 1.0 # 10 cm
+L0 = 0.1 # 10 cm
 
 
 # total energy from 0.1 to 50 nJ, random
@@ -71,9 +76,9 @@ Nz = round(L0 / dz)
 boundary_type = 'periodic'
 
 # custom mode input fields
-modes = np.load('modes.npy')
+modes = np.load('modes_30.npy')
 modes = torch.tensor(modes, dtype=torch.complex64, device=device)
-num_mode = 10
+num_mode = 30
 
 domain = Domain(Lx, Ly, time_window, Nx, Ny, Nt, Nz, dz, precision=precision, device=device)
 fiber = GRINFiber(domain, n_core, n_clad, beta2=beta2, beta3=beta3, n2=n2, radius=core_radius,)
@@ -87,12 +92,14 @@ all_spatial_intensities_sequential = []
 
 num_data = 2
 
+
+
 total_energy = 10
 start_time = time.time()
 for n in range(num_data):
-    coefficients = torch.randn(10, dtype=torch.complex64)
+    coefficients = torch.randn(num_mode, dtype=torch.complex64)
     coefficients = coefficients / torch.linalg.norm(coefficients)
-    coefficients = coefficients.reshape((10, 1, 1)).to(device)
+    coefficients = coefficients.reshape((num_mode, 1, 1)).to(device)
     mode_fields = torch.sum(coefficients * modes[:num_mode], dim=0)
 
     input = Fields(domain, input_type='custom', fields=mode_fields, tfwhm=tfwhm, total_energy=total_energy, t_center=0,) # spatially gaussian and gaussian pulse
@@ -111,5 +118,5 @@ for n in range(num_data):
 print(f'Total calculation time : {time.time() - start_time}', flush=True)
 all_spatiotemporal_fields = np.stack(all_spatiotemporal_fields, axis=0)  # shape: (10, ...)
 
-np.save(f'spatiotemporal_fields_{int(L0*100)}cm_{total_energy}nJ_1.npy', all_spatiotemporal_fields)
+np.save(f'spatiotemporal_fields_{int(L0*100)}cm_{total_energy}nJ_{num_data}_t10.npy', all_spatiotemporal_fields)
 
