@@ -15,6 +15,10 @@ class SimConfig:
     kerr: bool = True
     raman: bool = False
     self_steeping: bool = False
+    batch_num: int = 1
+    ds_x: int = 1
+    ds_y: int = 1
+    ds_t: int = 1
 
 
 class Simulation:
@@ -27,12 +31,15 @@ class Simulation:
             config = SimConfig()
         else:
             self.config = config
-
-        self.num_save_xz = 500
-        self.num_save_zt = 10
+        
         self.cnt = 0
         self.cnt_xz = 0
         self.cnt_zt = 0
+
+
+        # currently not used
+        # self.num_save_xz = 500
+        # self.num_save_zt = 10
 
         self.device = domain.device
 
@@ -43,41 +50,29 @@ class Simulation:
     def calculate_K(self):
         self.k0 = 2 * torch.pi / self.config.center_wavelength
         self.KZ = -(self.domain.KX[:,:,0]**2 + self.domain.KY[:,:,0]**2) / (2 * self.k0 * self.fiber.n_clad)
-        self.KZ = torch.unsqueeze(self.KZ, 2)
         self.Kin = self.k0 * (self.fiber.n - self.fiber.n_clad)
+
+        self.KZ = self.KZ[None, :, :, None]
+        self.Kin = self.Kin[None, :, :, None]
 
     def calculate_Dt(self):
         omega = self.domain.W[0, 0, :]                     # shape: (Nt,)
         self.Dt = (self.fiber.beta2 * omega**2) / 2.0 + (self.fiber.beta3 * omega**3) / 6.0
-        self.Dt = self.Dt.view(1, 1, -1)
+        self.Dt = self.Dt.view(1, 1, 1, -1)
 
     def _propagate_one_step(self, fields,):
 
         # Linear propagation calculation (Half-step)
         fields = fields * torch.exp(1j  * self.D * self.domain.dz / 2)
-        fields = torch.fft.ifftn(fields,)
+        fields = torch.fft.ifftn(fields, dim=(1, 2, 3))
 
-        # Nonlinear calculation
-        # if self.config.kerr:
-        #     Knl = self.fiber.n2 * self.k0 * torch.abs(fields)**2
-        # else:
-        #     Knl = 0
-        fields = fields * torch.exp(1j * (torch.unsqueeze(self.Kin, 2) + self.fiber.n2 * self.k0 * torch.abs(fields)**2) * self.domain.dz)
+        # Nonlinear propagation calculation
+        fields = fields * torch.exp(1j * (self.Kin + self.fiber.n2 * self.k0 * torch.abs(fields)**2) * self.domain.dz)
 
-        # Linear propagation calculation (Half-step)
-        fields = torch.fft.fftn(fields,)
+        fields = torch.fft.fftn(fields, dim=(1, 2, 3))
         fields = fields * torch.exp(1j  * self.D * self.domain.dz / 2)
         fields = fields * self.boundary.boundary
 
-        return fields
-
-    def _propagate_one_step_no_dispersion(self, fields,):
-        if self.config.kerr:
-            Knl = self.fiber.n2 * self.k0 * torch.abs(fields)**2
-        else:
-            Knl = 0
-        fields = fields * torch.exp(1j * (torch.unsqueeze(self.Kin, 2) + Knl) * self.domain.dz)
-        fields = fields * self.boundary.boundary
         return fields
 
     def run(self,):
@@ -85,15 +80,22 @@ class Simulation:
         if self.config.num_save > 0:
             save_step = self.domain.Nz // self.config.num_save
 
-        # self.spatial_intensities = torch.zeros((2, self.domain.Nx // 2, self.domain.Ny // 2), device=self.device, dtype=torch.float32) # input and output
-        self.spatiotemporal_fields = torch.zeros((2, self.domain.Nx // 2, self.domain.Ny // 2, self.domain.Nt // 2), device=self.device, dtype=fields.dtype) # input and output
+        # self.spatial_intensities = torch.zeros((2, self.domain.Nx // 2, self.domain.Ny // 2), device=self.device, dtype=torch.float32) # input and output        
         # self.spatial_intensities_sequential = torch.zeros((self.config.num_save+1, self.domain.Nx // 2, self.domain.Ny // 2), device=self.device, dtype=torch.float32) # input + num_save
 
-        self.spatiotemporal_fields[0, :, :, :] = fields[::2, ::2, ::2]
-        # self.spatial_intensities[0, :, :] = torch.sum(torch.abs(fields[::2, ::2, ::2])**2, axis=2)
-        fields = torch.fft.fftn(fields)
 
-        for i in tqdm(range(self.domain.Nz), disable=is_slurm_job):
+        self.spatiotemporal_fields = torch.zeros((self.config.batch_num, 2, self.domain.Nx // self.config.ds_x // 2, self.domain.Ny // self.config.ds_y // 2, self.domain.Nt // self.config.ds_t // 2), device=self.device, dtype=fields.dtype) # input and output
+        # save_fields cut both quarter of the fields before downsampling
+        field_shape = fields.shape
+
+        save_fields = fields[:, field_shape[1]//2-field_shape[1]//4:field_shape[1]//2+field_shape[1]//4, field_shape[2]//2-field_shape[2]//4:field_shape[2]//2+field_shape[2]//4, field_shape[3]//2-field_shape[3]//4:field_shape[3]//2+field_shape[3]//4]
+        self.spatiotemporal_fields[:, 0, :, :, :] = save_fields[:, ::self.config.ds_x, ::self.config.ds_y, ::self.config.ds_t]
+        
+        fields = torch.fft.fftn(fields, dim=(1, 2, 3))
+
+        for i in tqdm(range(self.domain.Nz), disable=is_slurm_job):            
+            fields = self._propagate_one_step(fields,)
+
             # if self.config.num_save > 0 and i % save_step == 0:
             #     spatial_fields = torch.fft.ifftn(fields)
             #     spatial_fields = torch.sum(torch.abs(spatial_fields)**2, axis=2)
@@ -108,12 +110,9 @@ class Simulation:
             #     # self.fields_zt[self.cnt_zt] = torch.fft.ifftn(fields[fields.shape[0]//2, fields.shape[1]//2, :])
             #     self.fields_zt[self.cnt_zt] = E_temporal
             #     self.cnt_zt += 1
-            
-            fields = self._propagate_one_step(fields,)
+
         
-        fields = torch.fft.ifftn(fields)
+        fields = torch.fft.ifftn(fields, dim=(1, 2, 3))
 
-
-        self.spatiotemporal_fields[1, :, :, :] = fields[::2, ::2, ::2]
-        # self.spatial_intensities[1, :, :] = torch.sum(torch.abs(fields[::2, ::2, ::2])**2, axis=2)
-        # self.spatial_intensities_sequential[self.cnt, :, :] = self.spatial_intensities[1, :, :]
+        save_fields = fields[:, field_shape[1]//2-field_shape[1]//4:field_shape[1]//2+field_shape[1]//4, field_shape[2]//2-field_shape[2]//4:field_shape[2]//2+field_shape[2]//4, field_shape[3]//2-field_shape[3]//4:field_shape[3]//2+field_shape[3]//4]
+        self.spatiotemporal_fields[:, 1, :, :, :] = save_fields[:, ::self.config.ds_x, ::self.config.ds_y, ::self.config.ds_t]

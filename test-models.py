@@ -1,3 +1,5 @@
+
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -59,8 +61,8 @@ class FNO3DBlock(nn.Module):
 
     def forward(self, x):
         out = self.spectral_conv(x) + self.pointwise_conv(x)
-        return x + self.activation(out)
-        # return self.activation(out)
+        return self.activation(out)
+
 
 # ========================
 # 3D FNO Model
@@ -93,36 +95,26 @@ class FNO3D(nn.Module):
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    data = np.load('spatiotemporal_fields_1cm_40nJ_total.npy',)
+    model_parameters = 'trained_model_dataset1_2000_8_8_16_0.01.pth'
+    data = np.load('spatiotemporal_fields_1cm_40nJ_test.npy',)
+    
+
+    #expand dimension 0 of data
+    test_input_data = data[:, :1,  :, :, :]
+    test_output_data = data[:, 1:, :, :, :]
 
 
-    input_data = data[:, :1, :, :, :]
-    output_data = data[:, 1:, :, :, :]
 
-    num_data = data.shape[0]
-    n_train = int(num_data*0.9)
-    n_test = num_data - n_train
-    print(f'train : {n_train}, test : {n_test}')
-
-    train_input_data = input_data[0:n_train]
-    train_output_data = output_data[0:n_train]
-    test_input_data = input_data[n_train:]
-    test_output_data = output_data[n_train:]
-
-    #complex dtype to real dtype with split real and imag, [M, 1, X, Y, T] -> [M, 2, X, Y, T]
-    train_input_data = np.concatenate([train_input_data.real, train_input_data.imag], axis=1)
-    train_output_data = np.concatenate([train_output_data.real, train_output_data.imag], axis=1)
     test_input_data = np.concatenate([test_input_data.real, test_input_data.imag], axis=1)
     test_output_data = np.concatenate([test_output_data.real, test_output_data.imag], axis=1)
-    print(train_input_data.shape, train_output_data.shape, flush=True)
     print(test_input_data.shape, test_output_data.shape, flush=True)
 
     # Hyperparameters
     lr = 0.01
-    batch_size = 32
+    batch_size = 25
     epochs = 50
-    width = 16
-    num_layers = 4
+    width = 8
+    num_layers = 8
     mode_x, mode_y, mode_t = 16, 16, 16
 
     # Define a model
@@ -134,78 +126,58 @@ if __name__ == "__main__":
             modes=(mode_x, mode_y, mode_t),
             ).to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     loss_fn = nn.MSELoss()
 
     # Print the number of tunable parameters
     print('Number of parameters : ',flush=True)
     print(sum(p.numel() for p in model.parameters() if p.requires_grad))
-    
-    total_loss = 0
-    total_test_loss = 0
-    eps = 1e-8
-    total_loss_list = []
-    total_test_loss_list = []
-    
-    # scaler = torch.cuda.amp.GradScaler()    
 
-    for epoch in range(epochs):
-        model.train()
-        for i in range(0, train_input_data.shape[0], batch_size):
-            optimizer.zero_grad()
-            inp = torch.tensor(train_input_data[i:i+batch_size], device=device)
-            target = torch.tensor(train_output_data[i:i+batch_size], device=device)
-            out = model(inp)
-            loss = loss_fn(out, target) / (torch.mean(target**2) + eps)
-            # with torch.cuda.amp.autocast():
-            #     out = model(inp)        
-            #     loss = loss_fn(out, target) / (torch.mean(target**2) + eps)
-            total_loss = total_loss + loss.item()             
-             
-            # scaler.scale(loss).backward()
-            # scaler.step(optimizer)
-            # scaler.update()        
-            loss.backward()
-            optimizer.step()
-            scheduler.step()
-            print(f"Epoch {epoch}, batch {i} training complete", flush=True)
-        
-        model.eval()
-        with torch.no_grad():
-            for i in range(0, test_input_data.shape[0], batch_size):
-                test_input = torch.tensor(test_input_data[i:i+batch_size], device=device)
-                test_target = torch.tensor(test_output_data[i:i+batch_size], device=device)
-                test_out = model(test_input)
-                test_loss = loss_fn(test_out, test_target) / (torch.mean(test_target**2) + eps)
-                total_test_loss = total_test_loss + test_loss.item()
-            
-        print(f"Epoch {epoch}, Train Loss: {total_loss / n_train}, Test Loss: {total_test_loss / n_test}", flush=True)
-        total_loss_list.append(total_loss / 900)
-        total_test_loss_list.append(total_test_loss / 100)
-        total_loss = 0
-        total_test_loss = 0
+    # model parameter load from model_parameters
+    model.load_state_dict(torch.load(model_parameters))
 
-    torch.save(model.state_dict(), f"trained_model_dataset1_{int(num_data)}_{num_layers}_{width}_{mode_x}_{lr}.pth")
-    print("Model parameters are saved!")
-
-
-
-    test_input_data = torch.tensor(test_input_data[0:2], device=device)
+    import time 
+    model.eval()
+    test_input_data = torch.tensor(test_input_data[:6], device=device)
+    start_time = time.time()
     pred = model(test_input_data)
+    end_time = time.time()
+    print(f'Time taken : {end_time - start_time} seconds', flush=True)
 
 
-    mid_t = input_data.shape[-1]//2
-    print(f'mid_t = {mid_t}')
+
+    ind = 3
     pred_np = pred.detach().cpu().numpy()
-    output_np_real = test_output_data[0, 0, :, :, mid_t]
-    pred_np_real = pred_np[0, 0, :, :, mid_t]
-    output_np_imag = test_output_data[0, 1, :, :, mid_t]
-    pred_np_imag = pred_np[0, 1, :, :, mid_t]
+    output_np_real = test_output_data[ind, 0, :, :, 128]
+    pred_np_real = pred_np[ind, 0, :, :, 128]
+    output_np_imag = test_output_data[ind, 1, :, :, 128]
+    pred_np_imag = pred_np[ind, 1, :, :, 128]
 
     output_intensity = np.sqrt(output_np_real**2 + output_np_imag**2)
     pred_intensity = np.sqrt(pred_np_real**2 + pred_np_imag**2)
 
+    output_time_real = test_output_data[ind, 0, 64, 64, :]
+    output_time_imag = test_output_data[ind, 1, 64, 64, :]
+    pred_time_real = pred_np[ind, 0, 64, 64, :]
+    pred_time_imag = pred_np[ind, 1, 64, 64, :]
+
+    output_time_intensity = np.sqrt(output_time_real**2 + output_time_imag**2)
+    pred_time_intensity = np.sqrt(pred_time_real**2 + pred_time_imag**2)
+
+    plt.figure()
+    plt.plot(output_time_intensity, label='output')
+    plt.plot(pred_time_intensity, label='pred')
+    plt.legend()
+    plt.savefig(f'time_intensity_{ind}.png', dpi=300)
+
+    # plot input of index ind
+    
+
+    error_map = np.abs(output_intensity - pred_intensity)
+
+    plt.figure()
+    plt.imshow(error_map, cmap='turbo', vmin=0, )
+    plt.colorbar()
+    plt.savefig(f'error_map_{ind}.png', dpi=300)
 
 
     vmin = 0
@@ -217,18 +189,12 @@ if __name__ == "__main__":
     plt.subplot(1, 2, 2)
     plt.imshow(pred_intensity, cmap='turbo', vmin=vmin, )
     plt.colorbar()
-    plt.savefig(f'pred_result_{int(num_data)}_{num_layers}_{width}_{mode_x}_{lr}.png', dpi=300)
+    plt.savefig(f'pred_result_{ind}.png', dpi=300)
 
-    # iterations = range(len(total_loss_list))
-    total_losses = np.array(total_loss_list)
-    total_test_losses = np.array(total_test_loss_list)
-
-    np.save(f'training_loss_{int(num_data)}_{num_layers}_{width}_{mode_x}_{lr}.npy', total_losses)
-    np.save(f'test_loss_{int(num_data)}_{num_layers}_{width}_{mode_x}_{lr}.npy', total_test_losses)
-    
-    plt.figure(figsize=(10,8))
-    plt.plot(iterations, total_losses)
-    plt.xlabel('Iterations')
-    plt.ylabel('Loss')
-    plt.savefig('loss_vs_iterations.png', dpi=300)
-
+    test_input_data_np = test_input_data.detach().cpu().numpy()
+    # intensity of input
+    input_intensity = np.sqrt(test_input_data_np[ind, 0, :, :, 128]**2 + test_input_data_np[ind, 1, :, :, 128]**2)
+    plt.figure()
+    plt.imshow(input_intensity, cmap='turbo', vmin=0, )
+    plt.colorbar()
+    plt.savefig(f'input_{ind}.png', dpi=300)
