@@ -93,11 +93,7 @@ class FNO3D(nn.Module):
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
-   
-
-
-    data = np.load('spatiotemporal_fields_1cm_40nJ_total.npy',)
-
+    data = np.load('spatiotemporal_fields_10cm_10nJ.npy',)
 
     input_data = data[:, :1, :, :, :]
     output_data = data[:, 1:, :, :, :]
@@ -105,10 +101,6 @@ if __name__ == "__main__":
     num_data = data.shape[0]
     n_train = int(num_data*0.9)
     n_test = num_data - n_train
-
-
-   
-
     print(f'train : {n_train}, test : {n_test}')
 
     train_input_data = input_data[0:n_train]
@@ -126,7 +118,7 @@ if __name__ == "__main__":
 
     # Hyperparameters
     lr = 0.01
-    batch_size = 20
+    batch_size = 32
     epochs = 50
     width = 16
     num_layers = 4
@@ -142,6 +134,7 @@ if __name__ == "__main__":
             ).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     loss_fn = nn.MSELoss()
 
     # Print the number of tunable parameters
@@ -174,6 +167,7 @@ if __name__ == "__main__":
             # scaler.update()        
             loss.backward()
             optimizer.step()
+            scheduler.step()
             print(f"Epoch {epoch}, batch {i} training complete", flush=True)
         
         model.eval()
@@ -199,11 +193,14 @@ if __name__ == "__main__":
     test_input_data = torch.tensor(test_input_data[0:2], device=device)
     pred = model(test_input_data)
 
+
+    mid_t = input_data.shape[-1]//2
+    print(f'mid_t = {mid_t}')
     pred_np = pred.detach().cpu().numpy()
-    output_np_real = test_output_data[0, 0, :, :, 128]
-    pred_np_real = pred_np[0, 0, :, :, 128]
-    output_np_imag = test_output_data[0, 1, :, :, 128]
-    pred_np_imag = pred_np[0, 1, :, :, 128]
+    output_np_real = test_output_data[0, 0, :, :, mid_t]
+    pred_np_real = pred_np[0, 0, :, :, mid_t]
+    output_np_imag = test_output_data[0, 1, :, :, mid_t]
+    pred_np_imag = pred_np[0, 1, :, :, mid_t]
 
     output_intensity = np.sqrt(output_np_real**2 + output_np_imag**2)
     pred_intensity = np.sqrt(pred_np_real**2 + pred_np_imag**2)
@@ -227,10 +224,10 @@ if __name__ == "__main__":
 
     np.save(f'training_loss_{int(num_data)}_{num_layers}_{width}_{mode_x}_{lr}.npy', total_losses)
     np.save(f'test_loss_{int(num_data)}_{num_layers}_{width}_{mode_x}_{lr}.npy', total_test_losses)
-    # plt.figure
-    # plt.plot(iterations, total_losses)
-    # plt.xlabel('Iterations')
-    # plt.ylabel('Loss')
-    # plt.savefig('loss_vs_iterations.png', dpi=300)
+    
+    plt.figure(figsize=(10,8))
+    plt.plot(iterations, total_losses)
+    plt.xlabel('Iterations')
+    plt.ylabel('Loss')
+    plt.savefig('loss_vs_iterations.png', dpi=300)
 
-    # plt.show()
