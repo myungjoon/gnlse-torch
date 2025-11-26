@@ -21,12 +21,11 @@ class Fields:
         self.cdtype = domain.cdtype
         
 
-        # ---- 공간 가우시안 ----
+        # Spatial Gaussian Beam
         if input_type == 'gaussian':
             spatial_profile = self._gaussian_beam(domain, beam_radius, cx, cy,
                                     device=self.device, rdtype=self.rdtype, cdtype=self.cdtype)  # (Nx,Ny)
             if phase_map is not None:
-                
                 spatial_profile = spatial_profile * torch.exp(1j * phase_map)
                 # FFT of spatial_profile for launching beam
                 spatial_profile = torch.fft.fftshift(torch.fft.fftn(spatial_profile))
@@ -34,15 +33,15 @@ class Fields:
         elif input_type == 'custom':
             spatial_profile = fields
 
-        # ---- 시간 가우시안 ----
+        # Temporal Gaussian Pulse
         temporal_profile = self._temporal_pulse(domain, tfwhm,
                                  t_center=self.t_center,
                                  device=self.device, rdtype=self.rdtype, cdtype=self.cdtype)  # (Nt,)
 
-        # ---- 결합: (Nx,Ny,Nt) ----
-        fields = spatial_profile.unsqueeze(-1) * temporal_profile.view(1, 1, -1)  # complex
+        # Combine: (B,Nx,Ny,Nt)
+        fields = spatial_profile.unsqueeze(-1) * temporal_profile.view(1, 1, 1, -1)  # complex
 
-        # ---- 에너지 정규화 ----
+        # Normalize to Energy
         dx = domain.Lx / domain.Nx
         dy = domain.Ly / domain.Ny
         dt = domain.time_window / domain.Nt
@@ -83,6 +82,7 @@ class Fields:
         # E_target : nanojoule
 
         intensity = torch.abs(fields)**2
-        E_current = intensity.sum() * (dx * dy * dt)
+        # intensity sum over spatial, and temporal dimensions
+        E_current = intensity.sum(dim=(1, 2, 3)) * (dx * dy * dt)
         scale = torch.sqrt(torch.as_tensor(E_target, dtype=intensity.dtype, device=fields.device) / E_current) * math.sqrt(1e12 / 1e9)
-        return fields * scale
+        return fields * scale.view(-1, 1, 1, 1)

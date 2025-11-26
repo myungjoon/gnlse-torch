@@ -93,8 +93,6 @@ class FNO3D(nn.Module):
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
-   
-
 
     data = np.load('spatiotemporal_fields_1cm_40nJ_total.npy',)
 
