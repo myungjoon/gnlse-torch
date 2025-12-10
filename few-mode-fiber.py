@@ -26,50 +26,42 @@ KERR = True
 RAMAN = False
 SELF_STEEPING = False
 
-DS_X = 2
-DS_Y = 2
-DS_T = 2
-BATCH_NUM = 1
-
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 device_id = 1
 device = torch.device(f'cuda:{device_id}' if torch.cuda.is_available() else 'cpu')
 
-precision = 'single'
+precision = 'double'
 
 num_save = 100
-
-wvl0 = 1030e-9
-L0 = 0.05 # 10 cm
+wvl0 = 1550e-9
+L0 = 3.0
 
 # Pulse
-total_energy = 20 # nJ
-Nt = 2**10
-time_window = 2 # ps
+total_energy = 5 # nJ
+Nt = 2**12
+time_window = 30 # ps
 dt = time_window / Nt
 dt_s = dt * 1e-12  # s
-tfwhm = 0.06 # ps
+tfwhm = 0.250 # ps
 t = np.linspace(-0.5 * time_window, 0.5 * time_window, Nt)
 
 # Fiber parameters
-core_radius = 62.5e-6 / 2
-NA = 0.25
+core_radius = 16.0e-6 / 2
+NA = 0.14
 n_clad = 1.45
 n_core = np.sqrt(NA**2 + n_clad**2)
 n2 = 2.3e-20
 beta2 = 1.655e-26 * (1e12**2)
 beta3 = 23.3e-42 * (1e12**3)
-# beta2 = 0
-# beta3 = 0
 
 print(f'beta2: {beta2}, beta3: {beta3}', flush=True)
 
 # Simulation domain parameters
 Lx, Ly = 4 * core_radius, 4 * core_radius
 unit = 1e-6
-Nx, Ny = 256, 256
+Nx, Ny = 64, 64
 print(f'The grid size is {Nx}x{Ny}')
 dz = 1e-5
 Nz = round(L0 / dz)
@@ -80,7 +72,7 @@ boundary_type = 'periodic'
 # custom mode input fields
 modes = np.load('modes.npy')
 modes = torch.tensor(modes, dtype=torch.complex64, device=device)
-num_mode = 30
+num_mode = 3
 
 domain = Domain(Lx, Ly, time_window, Nx, Ny, Nt, Nz, dz, precision=precision, device=device)
 fiber = GRINFiber(domain, n_core, n_clad, beta2=beta2, beta3=beta3, n2=n2, radius=core_radius,)
@@ -135,10 +127,7 @@ for n in range(num_iters):
     # spatial_intensities = sim.spatial_intensities.cpu().numpy()
     # spatial_intensities_sequential = sim.spatial_intensities_sequential.cpu().numpy()
     
-
 print(f'Total calculation time : {time.time() - start_time}', flush=True)
-
-
 
 np.save(f'spatiotemporal_fields_{int(L0*100)}cm_{total_energy}nJ_{num_data}_{BATCH_NUM}.npy', all_spatiotemporal_fields)
 
