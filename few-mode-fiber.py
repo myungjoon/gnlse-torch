@@ -23,14 +23,14 @@ torch.manual_seed(42)
 
 DISPERSION = True
 KERR = True
-RAMAN = False
+RAMAN = True
 SELF_STEEPING = False
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-device_id = 1
-device = torch.device(f'cuda:{device_id}' if torch.cuda.is_available() else 'cpu')
+
+device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
 
 precision = 'double'
 
@@ -85,7 +85,6 @@ all_spatiotemporal_fields = []
 all_spatial_intensities = []
 all_spatial_intensities_sequential = []
 
-num_data = 31
 
 num_iters = (num_data + BATCH_NUM - 1) // BATCH_NUM  # Ceiling division to handle all data points
 print(f'batch size: {BATCH_NUM}')
@@ -102,31 +101,29 @@ all_spatiotemporal_fields = np.zeros((num_data, 2, Nx//DS_X//2, Ny//DS_Y//2, Nt/
 start_time = time.time()
 
 
-for n in range(num_iters):
-    # coefficients = torch.randn((BATCH_NUM, num_mode), dtype=torch.complex64)
-    start_idx = n * BATCH_NUM
-    end_idx = min((n + 1) * BATCH_NUM, num_data)
-    coeffs = coefficients[start_idx:end_idx] 
-    # Ensure modes are properly expanded for the batch size
-    batch_size = coeffs.shape[0]
-    modes_batch = modes.expand(batch_size, -1, -1, -1)  # Expand to (batch_size, num_mode, Nx, Ny)
-    input_fields = torch.sum(coeffs[:,:,None, None] * modes_batch[:, :num_mode], dim=1)
 
-    # Create a config with the correct batch size for this iteration
-    config_iter = SimConfig(center_wavelength=wvl0, dispersion=DISPERSION, kerr=KERR, raman=RAMAN, self_steeping=SELF_STEEPING,
-                           batch_num=batch_size, num_save=num_save, ds_x=DS_X, ds_y=DS_Y, ds_t=DS_T)
-    input = Fields(domain, input_type='custom', fields=input_fields, tfwhm=tfwhm, total_energy=total_energy, t_center=0,) # spatially gaussian and gaussian pulse
-    sim = Simulation(domain, fiber, input, boundary, config_iter)
 
-    print(f'The simulation {n} starts.', flush=True)
-    sim.run()
+coeffs = coefficients[start_idx:end_idx] 
 
-    all_spatiotemporal_fields[start_idx:end_idx] = sim.spatiotemporal_fields.cpu().numpy()
-    # spatiotemporal_fields = sim.spatiotemporal_fields.cpu().numpy()
-    # spatiotemporal_fields = spatiotemporal_fields[:, 16:112, 16:112, 32:224]
-    # spatial_intensities = sim.spatial_intensities.cpu().numpy()
-    # spatial_intensities_sequential = sim.spatial_intensities_sequential.cpu().numpy()
-    
+batch_size = coeffs.shape[0]
+modes_batch = modes.expand(batch_size, -1, -1, -1)  # Expand to (batch_size, num_mode, Nx, Ny)
+input_fields = torch.sum(coeffs[:,:,None, None] * modes_batch[:, :num_mode], dim=1)
+
+
+config_iter = SimConfig(center_wavelength=wvl0, dispersion=DISPERSION, kerr=KERR, raman=RAMAN, self_steeping=SELF_STEEPING,
+                        batch_num=batch_size, num_save=num_save, ds_x=DS_X, ds_y=DS_Y, ds_t=DS_T)
+input = Fields(domain, input_type='custom', fields=input_fields, tfwhm=tfwhm, total_energy=total_energy, t_center=0,) # spatially gaussian and gaussian pulse
+sim = Simulation(domain, fiber, input, boundary, config_iter)
+
+print(f'The simulation {n} starts.', flush=True)
+sim.run()
+
+all_spatiotemporal_fields[start_idx:end_idx] = sim.spatiotemporal_fields.cpu().numpy()
+# spatiotemporal_fields = sim.spatiotemporal_fields.cpu().numpy()
+# spatiotemporal_fields = spatiotemporal_fields[:, 16:112, 16:112, 32:224]
+# spatial_intensities = sim.spatial_intensities.cpu().numpy()
+# spatial_intensities_sequential = sim.spatial_intensities_sequential.cpu().numpy()
+
 print(f'Total calculation time : {time.time() - start_time}', flush=True)
 
 np.save(f'spatiotemporal_fields_{int(L0*100)}cm_{total_energy}nJ_{num_data}_{BATCH_NUM}.npy', all_spatiotemporal_fields)

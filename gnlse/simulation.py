@@ -77,42 +77,25 @@ class Simulation:
 
     def run(self,):
         fields = self.fields.fields
-        if self.config.num_save > 0:
-            save_step = self.domain.Nz // self.config.num_save
+        # if self.config.num_save > 0:
+        #     save_step = self.domain.Nz // self.config.num_save
 
         # self.spatial_intensities = torch.zeros((2, self.domain.Nx // 2, self.domain.Ny // 2), device=self.device, dtype=torch.float32) # input and output        
         # self.spatial_intensities_sequential = torch.zeros((self.config.num_save+1, self.domain.Nx // 2, self.domain.Ny // 2), device=self.device, dtype=torch.float32) # input + num_save
 
-
-        self.spatiotemporal_fields = torch.zeros((self.config.batch_num, 2, self.domain.Nx // self.config.ds_x // 2, self.domain.Ny // self.config.ds_y // 2, self.domain.Nt // self.config.ds_t // 2), device=self.device, dtype=fields.dtype) # input and output
+        # self.spatiotemporal_fields = torch.zeros((self.config.batch_num, 2, self.domain.Nx // self.config.ds_x // 2, self.domain.Ny // self.config.ds_y // 2, self.domain.Nt // self.config.ds_t // 2), device=self.device, dtype=fields.dtype) # input and output
         # save_fields cut both quarter of the fields before downsampling
-        field_shape = fields.shape
+        # field_shape = fields.shape
 
-        save_fields = fields[:, field_shape[1]//2-field_shape[1]//4:field_shape[1]//2+field_shape[1]//4, field_shape[2]//2-field_shape[2]//4:field_shape[2]//2+field_shape[2]//4, field_shape[3]//2-field_shape[3]//4:field_shape[3]//2+field_shape[3]//4]
-        self.spatiotemporal_fields[:, 0, :, :, :] = save_fields[:, ::self.config.ds_x, ::self.config.ds_y, ::self.config.ds_t]
+        # save_fields = fields[:, field_shape[1]//2-field_shape[1]//4:field_shape[1]//2+field_shape[1]//4, field_shape[2]//2-field_shape[2]//4:field_shape[2]//2+field_shape[2]//4, field_shape[3]//2-field_shape[3]//4:field_shape[3]//2+field_shape[3]//4]
+        # self.spatiotemporal_fields[:, 0, :, :, :] = save_fields[:, ::self.config.ds_x, ::self.config.ds_y, ::self.config.ds_t]
         
         fields = torch.fft.fftn(fields, dim=(1, 2, 3))
 
         for i in tqdm(range(self.domain.Nz), disable=is_slurm_job):            
             fields = self._propagate_one_step(fields,)
-
-            # if self.config.num_save > 0 and i % save_step == 0:
-            #     spatial_fields = torch.fft.ifftn(fields)
-            #     spatial_fields = torch.sum(torch.abs(spatial_fields)**2, axis=2)
-            #     spatial_fields = spatial_fields[::2, ::2]
-            #     self.spatial_intensities_sequential[self.cnt, :, :] = spatial_fields
-            #     self.cnt += 1
-            # if i % save_step_xz == 0:
-            #     self.fields_xz[self.cnt_xz] = torch.fft.ifftn(fields,)[:, fields.shape[1]//2, fields.shape[2]//2]
-            #     self.cnt_xz += 1
-            # if i % save_step_zt == 0:
-            #     E_temporal = torch.sum(torch.abs(torch.fft.ifftn(fields))**2, axis=(0,1))
-            #     # self.fields_zt[self.cnt_zt] = torch.fft.ifftn(fields[fields.shape[0]//2, fields.shape[1]//2, :])
-            #     self.fields_zt[self.cnt_zt] = E_temporal
-            #     self.cnt_zt += 1
-
         
         fields = torch.fft.ifftn(fields, dim=(1, 2, 3))
-
-        save_fields = fields[:, field_shape[1]//2-field_shape[1]//4:field_shape[1]//2+field_shape[1]//4, field_shape[2]//2-field_shape[2]//4:field_shape[2]//2+field_shape[2]//4, field_shape[3]//2-field_shape[3]//4:field_shape[3]//2+field_shape[3]//4]
-        self.spatiotemporal_fields[:, 1, :, :, :] = save_fields[:, ::self.config.ds_x, ::self.config.ds_y, ::self.config.ds_t]
+        self.output_fields = fields
+        # save_fields = fields[:, field_shape[1]//2-field_shape[1]//4:field_shape[1]//2+field_shape[1]//4, field_shape[2]//2-field_shape[2]//4:field_shape[2]//2+field_shape[2]//4, field_shape[3]//2-field_shape[3]//4:field_shape[3]//2+field_shape[3]//4]
+        # self.spatiotemporal_fields[:, 1, :, :, :] = save_fields[:, ::self.config.ds_x, ::self.config.ds_y, ::self.config.ds_t]
