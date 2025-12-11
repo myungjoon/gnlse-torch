@@ -93,14 +93,14 @@ class FNO3D(nn.Module):
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    data = np.load('spatiotemporal_fields_1cm_40nJ_total.npy',)
+    data = np.load('spatiotemporal_fields_5cm_20nJ_total.npy',)
 
 
     input_data = data[:, :1, :, :, :]
     output_data = data[:, 1:, :, :, :]
 
     num_data = data.shape[0]
-    n_train = int(num_data*0.9)
+    n_train = int(num_data*0.8)
     n_test = num_data - n_train
     print(f'train : {n_train}, test : {n_test}')
 
@@ -120,7 +120,7 @@ if __name__ == "__main__":
     # Hyperparameters
     lr = 0.01
     batch_size = 32
-    epochs = 50
+    epochs = 100
     width = 16
     num_layers = 4
     mode_x, mode_y, mode_t = 16, 16, 16
