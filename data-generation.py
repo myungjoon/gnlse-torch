@@ -7,8 +7,8 @@ from gnlse import Domain, GRINFiber, Fields, Boundary, Simulation, SimConfig
 from gnlse import plot_fields, plot_index_profile
 
 # seed for random number generation
-np.random.seed(42)
-torch.manual_seed(42)
+# np.random.seed(42)
+# torch.manual_seed(42)
 
 # Parameters
 # Pulse energy : 50 nJ
@@ -29,13 +29,13 @@ SELF_STEEPING = False
 DS_X = 2
 DS_Y = 2
 DS_T = 2
-BATCH_NUM = 1
+BATCH_NUM = 20
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 device_id = 1
-device = torch.device(f'cuda:{device_id}' if torch.cuda.is_available() else 'cpu')
+device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
 
 precision = 'single'
 
@@ -93,7 +93,7 @@ all_spatiotemporal_fields = []
 all_spatial_intensities = []
 all_spatial_intensities_sequential = []
 
-num_data = 31
+num_data = 500
 
 num_iters = (num_data + BATCH_NUM - 1) // BATCH_NUM  # Ceiling division to handle all data points
 print(f'batch size: {BATCH_NUM}')
@@ -140,5 +140,5 @@ print(f'Total calculation time : {time.time() - start_time}', flush=True)
 
 
 
-np.save(f'spatiotemporal_fields_{int(L0*100)}cm_{total_energy}nJ_{num_data}_{BATCH_NUM}.npy', all_spatiotemporal_fields)
+np.save(f'spatiotemporal_fields_{int(L0*100)}cm_{total_energy}nJ_{num_data}_6.npy', all_spatiotemporal_fields)
 

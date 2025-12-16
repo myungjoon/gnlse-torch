@@ -26,7 +26,7 @@ wvl0 = 775e-9
 L0 = 0.15 # 10 cm
 
 # Pulse
-total_energy = 85 # nJ
+total_energy = 0.1 # nJ
 Nt = 2**10
 time_window = 15 # ps
 dt = time_window / Nt
@@ -49,7 +49,7 @@ print(f'beta2: {beta2}, beta3: {beta3}', flush=True)
 Lx, Ly = 4 * core_radius, 4 * core_radius
 unit = 1e-6
 Nx, Ny = 2**11, 2**11
-print(f'The grid size is {Nx}x{Ny}', flush=True)
+print(f'The grid size is {Nx}x{Ny}x{Nt}', flush=True)
 dz = 1e-5
 Nz = round(L0 / dz)
 
@@ -82,5 +82,5 @@ sim = Simulation(domain, fiber, input, boundary, config)
 sim.run()
 
 output_fields = sim.output_fields
-np.save(f'output_fields_{Nx}_{Ny}_{Nt}.npy', output_fields.cpu().numpy().squeeze())
+np.save(f'output_fields_{Nx}_{Ny}_{Nt}_{total_energy}.npy', output_fields.cpu().numpy().squeeze())
 print('End of simulation')
