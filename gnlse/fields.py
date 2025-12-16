@@ -74,8 +74,21 @@ class Fields:
         temporal_profile = torch.exp(phase).to(cdtype)  # (Nt,), complex
         return temporal_profile
 
+
     @staticmethod
     def _normalize_to_energy(fields, dx, dy, dt, E_target):
+ 
+        intensity = torch.abs(fields)**2
+        E_current = intensity.sum(dim=(1, 2, 3)) * (dx * dy * dt)
+       
+        scale = torch.sqrt(torch.as_tensor(E_target, dtype=intensity.dtype, device=fields.device) / E_current) * math.sqrt(1e12 / 1e9)
+        fields.mul_(scale.view(-1, 1, 1, 1)) # <-- (O) 메모리 절약
+        
+        return fields
+
+
+    @staticmethod
+    def _normalize_to_energy_legacy(fields, dx, dy, dt, E_target):
         # dx : meter
         # dy : meter
         # dt : picosecond

@@ -95,8 +95,8 @@ class FNO3D(nn.Module):
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    model_parameters = 'trained_model_dataset1_2000_8_8_16_0.01.pth'
-    data = np.load('spatiotemporal_fields_1cm_40nJ_test.npy',)
+    model_parameters = 'trained_model_dataset1_2500_4_16_16_0.01.pth'
+    data = np.load('spatiotemporal_fields_5cm_20nJ_test.npy')
     
 
     #expand dimension 0 of data
@@ -113,8 +113,8 @@ if __name__ == "__main__":
     lr = 0.01
     batch_size = 25
     epochs = 50
-    width = 8
-    num_layers = 8
+    width = 16
+    num_layers = 4
     mode_x, mode_y, mode_t = 16, 16, 16
 
     # Define a model
@@ -137,7 +137,7 @@ if __name__ == "__main__":
 
     import time 
     model.eval()
-    test_input_data = torch.tensor(test_input_data[:6], device=device)
+    test_input_data = torch.tensor(test_input_data[:3], device=device)
     start_time = time.time()
     pred = model(test_input_data)
     end_time = time.time()
@@ -145,7 +145,7 @@ if __name__ == "__main__":
 
 
 
-    ind = 3
+    ind = 2
     pred_np = pred.detach().cpu().numpy()
     output_np_real = test_output_data[ind, 0, :, :, 128]
     pred_np_real = pred_np[ind, 0, :, :, 128]
@@ -155,10 +155,10 @@ if __name__ == "__main__":
     output_intensity = np.sqrt(output_np_real**2 + output_np_imag**2)
     pred_intensity = np.sqrt(pred_np_real**2 + pred_np_imag**2)
 
-    output_time_real = test_output_data[ind, 0, 64, 64, :]
-    output_time_imag = test_output_data[ind, 1, 64, 64, :]
-    pred_time_real = pred_np[ind, 0, 64, 64, :]
-    pred_time_imag = pred_np[ind, 1, 64, 64, :]
+    output_time_real = test_output_data[ind, 0, 32, 32, :]
+    output_time_imag = test_output_data[ind, 1, 32, 32, :]
+    pred_time_real = pred_np[ind, 0, 32, 32, :]
+    pred_time_imag = pred_np[ind, 1, 32, 32, :]
 
     output_time_intensity = np.sqrt(output_time_real**2 + output_time_imag**2)
     pred_time_intensity = np.sqrt(pred_time_real**2 + pred_time_imag**2)
