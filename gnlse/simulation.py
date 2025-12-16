@@ -32,15 +32,6 @@ class Simulation:
         else:
             self.config = config
         
-        self.cnt = 0
-        self.cnt_xz = 0
-        self.cnt_zt = 0
-
-
-        # currently not used
-        # self.num_save_xz = 500
-        # self.num_save_zt = 10
-
         self.device = domain.device
 
         self.calculate_K()
