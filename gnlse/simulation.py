@@ -16,6 +16,7 @@ class SimConfig:
     dispersion: bool = True
     kerr: bool = True
     raman: bool = False
+    fr: float = 0.18
     self_steeping: bool = False
     batch_num: int = 1
     ds_x: int = 1
@@ -61,18 +62,37 @@ class Simulation:
         self.Dt = (self.fiber.beta2 * omega**2) / 2.0 + (self.fiber.beta3 * omega**3) / 6.0
         self.Dt = self.Dt.view(1, 1, 1, -1)
 
-    def _propagate_one_step(self, fields,):
+    def _propagate_one_step(self, fields, is_save_fields=False):
 
         # Linear propagation calculation (Half-step)
         fields = fields * torch.exp(1j  * self.D * self.domain.dz / 2)
         fields = torch.fft.ifftn(fields, dim=(1, 2, 3))
 
         # Nonlinear propagation calculation
-        fields = fields * torch.exp(1j * (self.Kin + self.fiber.n2 * self.k0 * torch.abs(fields)**2) * self.domain.dz)
+        intensity = torch.abs(fields)**2
+        if self.config.raman:
+            I_w = torch.fft.fft(intensity.to(torch.complex64), dim=3)
+            R_t = torch.fft.ifft(I_w * self.H_R_w, dim=3).real
+            NL = (1.0 - self.config.fr) * intensity + self.config.fr * R_t
+
+        else:
+            NL = intensity
+
+        fields = fields * torch.exp(1j * (self.Kin + self.fiber.n2 * self.k0 * NL) * self.domain.dz)
 
         fields = torch.fft.fftn(fields, dim=(1, 2, 3))
         fields = fields * torch.exp(1j  * self.D * self.domain.dz / 2)
         fields = fields * self.boundary.boundary
+
+        if is_save_fields:
+            fields = torch.fft.ifftn(fields, dim=(1, 2, 3))
+            intensity = torch.abs(fields)**2
+            if self.config.save_spatial:
+                self.saved_spatial_fields[self.cnt, :, :] = torch.sum(intensity, axis=2)
+            if self.config.save_temporal:
+                self.saved_temporal_fields[self.cnt, :] = torch.sum(intensity, axis=(-3,-2))
+            self.cnt += 1
+            fields = torch.fft.fftn(fields, dim=(1, 2, 3))
 
         return fields
 
@@ -85,11 +105,13 @@ class Simulation:
 
             if self.config.save_temporal:
                 self.saved_temporal_fields = torch.zeros((self.config.batch_num, self.config.num_save+1, self.domain.Nt), device=self.device, dtype=fields.dtype)
-
+                intensity = torch.abs(fields)**2
+                self.saved_temporal_fields[self.cnt, :] = torch.sum(intensity, axis=(-3,-2))
         fields = torch.fft.fftn(fields, dim=(1, 2, 3))
 
-        for i in tqdm(range(self.domain.Nz), disable=is_slurm_job):            
-            fields = self._propagate_one_step(fields,)
+        for i in tqdm(range(self.domain.Nz), disable=is_slurm_job):   
+            is_save_fields = True if save_step > 0 and i % save_step == 0 else False
+            fields = self._propagate_one_step(fields, is_save_fields)
 
             # if self.config.num_save > 0 and i % save_step == 0:
             #     spatial_fields = torch.fft.ifftn(fields)
