@@ -72,7 +72,7 @@ torch.manual_seed(42)
 
 DISPERSION = True
 KERR = True
-RAMAN = False
+RAMAN = True
 SELF_STEEPING = False
 
 BATCH_NUM = 3
@@ -88,9 +88,9 @@ device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
 
 precision = 'double'
 
-num_save = 2
+num_save = 4
 wvl0 = 1550e-9
-L0 = 1e-4
+L0 = 2e-4
 
 # Pulse
 total_energy = 5 # nJ
@@ -127,7 +127,10 @@ t2 = 32e-3
 
 def get_hrw(ts, t1=12.2e-3, t2=32e-3):
     hr = ((t1**2 + t2**2) / (t1 * t2**2)) * np.sin(ts / t1) * np.exp(-ts / t2)
-    hrw = np.fft.ifft(hr) * Nt
+    hr[ts < 0] = 0
+    norm_factor = np.sum(hr) * dt
+    hr = hr / norm_factor
+    hrw = np.fft.fft(hr) # * Nt
     return hrw
 
 hrw = get_hrw(ts)
@@ -147,7 +150,7 @@ modes = torch.tensor(modes, dtype=torch.complex64, device=device)
 num_mode = 3
 
 domain = Domain(Lx, Ly, time_window, Nx, Ny, Nt, Nz, dz, precision=precision, device=device)
-fiber = GRINFiber(domain, n_core, n_clad, beta2=beta2, beta3=beta3, n2=n2, radius=core_radius,)
+fiber = GRINFiber(domain, n_core, n_clad, beta2=beta2, beta3=beta3, n2=n2, radius=core_radius, hrw=hrw)
 boundary = Boundary(domain, boundary_type)
 config = SimConfig(center_wavelength=wvl0, dispersion=DISPERSION, kerr=KERR, raman=RAMAN, self_steeping=SELF_STEEPING,
                         batch_num=BATCH_NUM, num_save=num_save, ds_x=DS_X, ds_y=DS_Y, ds_t=DS_T)
@@ -177,13 +180,21 @@ print(f'Total calculation time : {time.time() - start_time}', flush=True)
 input_fields = input_fields.fields.cpu().numpy()
 output_fields = sim.fields.fields.cpu().numpy()
 saved_temporal_fields = sim.saved_temporal_fields.cpu().numpy()
+saved_spectrum = sim.saved_spectrum.cpu().numpy()
+
+spectrum = saved_spectrum[0]
+plt.plot(spectrum)
 
 np.save(f'fields_{int(L0*100)}cm_{total_energy}nJ.npy', output_fields)
 np.save(f'temporal_fields_{int(L0*100)}cm_{total_energy}nJ.npy', saved_temporal_fields)
+np.save(f'spectrum_{int(L0*100)}cm_{total_energy}nJ.npy', saved_spectrum)
 
 plt.figure()
 plt.imshow(saved_temporal_fields[0].real, aspect='auto', cmap='turbo', origin='lower')
 plt.savefig(f'temporal_fields_{int(L0*100)}cm_{total_energy}nJ.png', dpi=300)
+
+plt.imshow(saved_spectrum[0].real, aspect='auto', cmap='turbo', origin='lower')
+plt.savefig(f'spectrum_{int(L0*100)}cm_{total_energy}nJ.png', dpi=300)
 # plt.show()
 
 
