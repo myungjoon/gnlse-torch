@@ -13,9 +13,10 @@ class SimConfig:
     num_save: int = -1
     save_spatial: bool = False
     save_temporal: bool = True
+    save_spectrum: bool = True
     dispersion: bool = True
     kerr: bool = True
-    raman: bool = False
+    raman: bool = True
     fr: float = 0.18
     self_steeping: bool = False
     batch_num: int = 1
@@ -62,6 +63,7 @@ class Simulation:
         self.Dt = (self.fiber.beta2 * omega**2) / 2.0 + (self.fiber.beta3 * omega**3) / 6.0
         self.Dt = self.Dt.view(1, 1, 1, -1)
 
+
     def _propagate_one_step(self, fields, is_save_fields=False):
 
         # Linear propagation calculation (Half-step)
@@ -71,8 +73,12 @@ class Simulation:
         # Nonlinear propagation calculation
         intensity = torch.abs(fields)**2
         if self.config.raman:
-            I_w = torch.fft.fft(intensity.to(torch.complex64), dim=3)
-            R_t = torch.fft.ifft(I_w * self.H_R_w, dim=3).real
+            I0  = torch.fft.ifftshift(intensity, dim=3)
+            I_w = torch.fft.fft(I0.to(torch.complex64), dim=3)
+
+            R0  = torch.fft.ifft(I_w * self.fiber.hrw, dim=3).real  # conv result in t=0@idx0 convention
+            R_t = torch.fft.fftshift(R0, dim=3)                     # back to centered convention
+
             NL = (1.0 - self.config.fr) * intensity + self.config.fr * R_t
 
         else:
@@ -85,48 +91,52 @@ class Simulation:
         fields = fields * self.boundary.boundary
 
         if is_save_fields:
+            
+
             fields = torch.fft.ifftn(fields, dim=(1, 2, 3))
             intensity = torch.abs(fields)**2
+
+            # diff = torch.mean(torch.abs(R_t - intensity)) / (torch.mean(intensity) + 1e-12)
+            # print(f"Raman diff ratio: {diff.item()}", flush=True)
+
             if self.config.save_spatial:
                 self.saved_spatial_fields[self.cnt, :, :] = torch.sum(intensity, axis=2)
             if self.config.save_temporal:
                 self.saved_temporal_fields[:, self.cnt, :] = torch.sum(intensity, axis=(-3,-2))
+            if self.config.save_spectrum:
+                self.saved_spectrum[:, self.cnt, :] = torch.fft.fftshift(torch.sum(torch.abs(torch.fft.fft(torch.fft.ifftshift(fields, axis=-1), axis=-1))**2, axis=(-3,-2)), axis=-1)
             self.cnt += 1
             fields = torch.fft.fftn(fields, dim=(1, 2, 3))
 
         return fields
 
     def run(self,):
+        if self.fiber.hrw is not None:
+            # dimension
+            self.fiber.hrw = self.fiber.hrw.unsqueeze(0).unsqueeze(0).unsqueeze(0)
+        # self.calculate_raman_response()
+
         fields = self.fields.fields
         if self.config.num_save > 0:
             save_step = self.domain.Nz // self.config.num_save
             if self.config.save_spatial:
                 self.saved_spatial_fields = torch.zeros((self.config.batch_num, self.config.num_save+1, self.domain.Nx, self.domain.Ny), device=self.device, dtype=fields.dtype)
-
             if self.config.save_temporal:
                 self.saved_temporal_fields = torch.zeros((self.config.batch_num, self.config.num_save+1, self.domain.Nt), device=self.device, dtype=fields.dtype)
                 intensity = torch.abs(fields)**2
                 self.saved_temporal_fields[:, self.cnt, :] = torch.sum(intensity, axis=(-3,-2))
+            if self.config.save_spectrum:
+                self.saved_spectrum = torch.zeros((self.config.batch_num, self.config.num_save+1, self.domain.Nt), device=self.device, dtype=fields.dtype)
+                self.saved_spectrum[:, self.cnt, :] = torch.fft.fftshift(torch.sum(torch.abs(torch.fft.fft(torch.fft.ifftshift(fields, axis=-1), axis=-1))**2, axis=(-3,-2)), axis=-1)
+            self.cnt += 1
         fields = torch.fft.fftn(fields, dim=(1, 2, 3))
 
         for i in tqdm(range(self.domain.Nz), disable=is_slurm_job):   
             is_save_fields = True if save_step > 0 and i % save_step == 0 else False
-            fields = self._propagate_one_step(fields, is_save_fields)
+                
 
-            # if self.config.num_save > 0 and i % save_step == 0:
-            #     spatial_fields = torch.fft.ifftn(fields)
-            #     spatial_fields = torch.sum(torch.abs(spatial_fields)**2, axis=2)
-            #     spatial_fields = spatial_fields[::2, ::2]
-            #     self.spatial_intensities_sequential[self.cnt, :, :] = spatial_fields
-            #     self.cnt += 1
-            # if i % save_step_xz == 0:
-            #     self.fields_xz[self.cnt_xz] = torch.fft.ifftn(fields,)[:, fields.shape[1]//2, fields.shape[2]//2]
-            #     self.cnt_xz += 1
-            # if i % save_step_zt == 0:
-            #     E_temporal = torch.sum(torch.abs(torch.fft.ifftn(fields))**2, axis=(0,1))
-            #     # self.fields_zt[self.cnt_zt] = torch.fft.ifftn(fields[fields.shape[0]//2, fields.shape[1]//2, :])
-            #     self.fields_zt[self.cnt_zt] = E_temporal
-            #     self.cnt_zt += 1
+            
+            fields = self._propagate_one_step(fields, is_save_fields)
 
         fields = torch.fft.ifftn(fields, dim=(1, 2, 3))
         self.fields.fields = fields

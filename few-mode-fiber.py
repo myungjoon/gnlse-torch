@@ -72,7 +72,7 @@ torch.manual_seed(42)
 
 DISPERSION = True
 KERR = True
-RAMAN = False
+RAMAN = True
 SELF_STEEPING = False
 
 BATCH_NUM = 3
@@ -88,16 +88,16 @@ device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
 
 precision = 'double'
 
-num_save = 101
+num_save = 100
 wvl0 = 1550e-9
-L0 = 1.0
+L0 = 3.0
 
 # Pulse
-total_energy = 5 # nJ
+total_energy = 1 # nJ
 Nt = 2**12
 time_window = 30 # ps
 dt = time_window / Nt
-dt_s = dt * 1e-12  # s
+dt_s = dt * 1e-12  # ss
 tfwhm = 0.250 # ps
 t = np.linspace(-0.5 * time_window, 0.5 * time_window, Nt)
 
@@ -107,8 +107,8 @@ NA = 0.14
 n_clad = 1.45
 n_core = np.sqrt(NA**2 + n_clad**2)
 n2 = 2.3e-20
-beta2 = 1.655e-26 * (1e12**2)
-beta3 = 23.3e-42 * (1e12**3)
+beta2 = -2.55e-26 * (1e12**2)
+beta3 = 2.3e-40 * (1e12**3)
 
 
 print(f'beta2: {beta2}, beta3: {beta3}', flush=True)
@@ -125,16 +125,28 @@ ts = np.linspace(0, time_window, Nt)
 t1 = 12.2e-3
 t2 = 32e-3
 
-def get_hrw(ts, t1=12.2e-3, t2=32e-3):
-    hr = ((t1**2 + t2**2) / (t1 * t2**2)) * np.sin(ts / t1) * np.exp(-ts / t2)
-    hrw = np.fft.ifft(hr) * Nt
-    return hrw
+def get_hrw(ts, dt, t1=12.2e-3, t2=32e-3):
+    """
+    ts: (Nt,) time array in ps, starting at 0 (0..(Nt-1)dt)
+    dt: time step in ps
+    t1,t2: Raman parameters in ps (silica: 12.2 fs, 32 fs -> 12.2e-3 ps, 32e-3 ps)
 
-hrw = get_hrw(ts)
+    Returns:
+      hrw = FFT(h_discrete), where h_discrete = h(ts)*dt and sum(h_discrete)=1
+    """
+    hr = ((t1**2 + t2**2) / (t1 * t2**2)) * np.sin(ts / t1) * np.exp(-ts / t2)
+    hr[ts < 0] = 0.0
+
+    # discrete convolution kernel: multiply by dt then normalize so sum=1
+    h_discrete = hr * dt
+    h_discrete = h_discrete / (np.sum(h_discrete) + 1e-30)
+    hrw = np.fft.fft(h_discrete)
+    return hrw
 
 # plt.plot(ts, hrw)
 # plt.show()
-
+ts = np.arange(Nt) * dt   # 0..(Nt-1)dt in ps (endpoint 문제 없음)
+hrw = get_hrw(ts, dt, t1=12.2e-3, t2=32e-3)
 hrw = torch.tensor(hrw, dtype=torch.complex64, device=device)
 
 
@@ -147,7 +159,7 @@ modes = torch.tensor(modes, dtype=torch.complex64, device=device)
 num_mode = 3
 
 domain = Domain(Lx, Ly, time_window, Nx, Ny, Nt, Nz, dz, precision=precision, device=device)
-fiber = GRINFiber(domain, n_core, n_clad, beta2=beta2, beta3=beta3, n2=n2, radius=core_radius,)
+fiber = GRINFiber(domain, n_core, n_clad, beta2=beta2, beta3=beta3, n2=n2, radius=core_radius, hrw=hrw)
 boundary = Boundary(domain, boundary_type)
 config = SimConfig(center_wavelength=wvl0, dispersion=DISPERSION, kerr=KERR, raman=RAMAN, self_steeping=SELF_STEEPING,
                         batch_num=BATCH_NUM, num_save=num_save, ds_x=DS_X, ds_y=DS_Y, ds_t=DS_T)
@@ -161,7 +173,7 @@ print(f'batch size: {BATCH_NUM}')
 modes = modes.unsqueeze(0)
 
 # coefficients = torch.randn((BATCH_NUM, num_mode), dtype=torch.complex64)
-coefficients = torch.tensor([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=torch.complex64)
+coefficients = torch.tensor([[0.333, 0.333, 0.333], [1, 0, 0], [0.2, 0.4, 0.4]], dtype=torch.complex64)
 coefficients = coefficients.to(device)
 coefficients = coefficients[:,:, None, None]
 fields = torch.sum(coefficients * modes, dim=1)
@@ -183,13 +195,46 @@ output_fields1 = output_fields[0]
 output_fields2 = output_fields[1]
 output_fields3 = output_fields[2]
 saved_temporal_fields = sim.saved_temporal_fields.cpu().numpy()
+saved_spectrum = sim.saved_spectrum.cpu().numpy()
+
 
 np.save(f'fields_{int(L0*100)}cm_{total_energy}nJ.npy', output_fields)
 np.save(f'temporal_fields_{int(L0*100)}cm_{total_energy}nJ.npy', saved_temporal_fields)
+np.save(f'spectrum_{int(L0*100)}cm_{total_energy}nJ.npy', saved_spectrum)
 
 plt.figure()
-plt.imshow(saved_temporal_fields[0].real, aspect='auto', cmap='turbo', origin='lower')
+plt.imshow(saved_temporal_fields[0].real, aspect='auto', cmap='turbo', origin='lower', extent=[-0.5 * time_window, 0.5 * time_window, 0, L0])
+plt.xlim(-1, 5)
+plt.xlabel('Time (ps)')
+plt.ylabel('Distance (m)')
 plt.savefig(f'temporal_fields_{int(L0*100)}cm_{total_energy}nJ.png', dpi=300)
+
+plt.figure()
+plt.imshow(saved_spectrum[0].real, aspect='auto', cmap='turbo', origin='lower')
+plt.savefig(f'spectrum_{int(L0*100)}cm_{total_energy}nJ.png', dpi=300)
+
+plt.figure()
+plt.imshow(saved_temporal_fields[1].real, aspect='auto', cmap='turbo', origin='lower', extent=[-0.5 * time_window, 0.5 * time_window, 0, L0])
+plt.xlabel('Time (ps)')
+plt.ylabel('Distance (m)')
+plt.xlim(-1, 5)
+plt.savefig(f'temporal_fields_{int(L0*100)}cm_{total_energy}nJ_1.png', dpi=300)
+
+plt.figure()
+plt.imshow(saved_spectrum[1].real, aspect='auto', cmap='turbo', origin='lower')
+plt.savefig(f'spectrum_{int(L0*100)}cm_{total_energy}nJ_1.png', dpi=300)
+
+plt.figure()
+plt.imshow(saved_temporal_fields[2].real, aspect='auto', cmap='turbo', origin='lower', extent=[-0.5 * time_window, 0.5 * time_window, 0, L0])
+plt.xlabel('Time (ps)')
+plt.ylabel('Distance (m)')
+plt.xlim(-1, 5)
+plt.savefig(f'temporal_fields_{int(L0*100)}cm_{total_energy}nJ_2.png', dpi=300)
+
+plt.figure()
+plt.imshow(saved_spectrum[2].real, aspect='auto', cmap='turbo', origin='lower')
+plt.savefig(f'spectrum_{int(L0*100)}cm_{total_energy}nJ_2.png', dpi=300)
+
 # plt.show()
 
 

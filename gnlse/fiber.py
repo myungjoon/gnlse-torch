@@ -1,7 +1,7 @@
 import torch
 
 class GRINFiber:
-    def __init__(self, domain, n_core, n_clad, beta2=0, beta3=0, n2=2e-20, radius=25e-6, ):
+    def __init__(self, domain, n_core, n_clad, beta2=0, beta3=0, n2=2e-20, radius=25e-6, hrw=None):
         self.domain = domain
         self.n_core = n_core
         self.n_clad = n_clad
@@ -9,7 +9,7 @@ class GRINFiber:
         self.beta2 = beta2
         self.beta3 = beta3
         self.radius = radius
-
+        self.hrw = hrw
         self.n = self.create_fiber()
         
 
