@@ -6,6 +6,54 @@ import os, time
 from gnlse import Domain, GRINFiber, Fields, Boundary, Simulation, SimConfig
 from gnlse import plot_fields, plot_index_profile
 
+
+def pulse_width_rms_diff(I: torch.Tensor, t: torch.Tensor, eps: float = 1e-12):
+    """
+    Differentiable RMS (2nd-moment) pulse width.
+    I: (Nt,) intensity tensor (nonnegative preferred)
+    t: (Nt,) time grid tensor (seconds)
+    returns: width = 2*sigma_t
+    """
+    # optional: baseline removal (also differentiable)
+    I = I - I.min()
+
+    w = I + eps  # avoid divide-by-zero
+    Z = torch.sum(w)
+    t_mean = torch.sum(t * w) / Z
+    var = torch.sum(((t - t_mean) ** 2) * w) / Z
+    sigma = torch.sqrt(var + eps)
+    return 2.0 * sigma
+
+def spectral_shift_centroid_from_time(E_t: torch.Tensor,
+                                      Omega: torch.Tensor,
+                                      dim_t: int = -1,
+                                      Omega_ref: float | torch.Tensor = 0.0,
+                                      eps: float = 1e-12):
+    """
+    Differentiable spectral centroid shift.
+    E_t: complex tensor (..., Nt)  (time-domain field)
+    Omega: tensor (Nt,) angular frequency grid aligned with FFT bins [rad/s]
+    Omega_ref: reference angular frequency (scalar or tensor broadcastable)
+    returns: dOmega (...,)
+    """
+    # FFT along time axis
+    E_w = torch.fft.fft(E_t, dim=dim_t)
+    S = (E_w.real**2 + E_w.imag**2)  # |E_w|^2, differentiable
+
+    # reshape Omega for broadcasting
+    shape = [1] * E_t.ndim
+    shape[dim_t] = -1
+    Omega_b = Omega.view(*shape).to(S.device, S.dtype)
+
+    num = torch.sum(Omega_b * S, dim=dim_t)
+    den = torch.sum(S, dim=dim_t) + eps
+    Omega_c = num / den
+
+    if not torch.is_tensor(Omega_ref):
+        Omega_ref = torch.tensor(Omega_ref, device=Omega_c.device, dtype=Omega_c.dtype)
+    return Omega_c - Omega_ref
+
+
 # seed for random number generation
 np.random.seed(42)
 torch.manual_seed(42)
@@ -22,14 +70,12 @@ torch.manual_seed(42)
 # n2 : 2.3e-20 m^2/W
 
 
-
-
 DISPERSION = True
 KERR = True
 RAMAN = False
 SELF_STEEPING = False
 
-BATCH_NUM = 2
+BATCH_NUM = 3
 DS_X = 1
 DS_Y = 1
 DS_T = 1
@@ -42,7 +88,7 @@ device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
 
 precision = 'double'
 
-num_save = 100
+num_save = 101
 wvl0 = 1550e-9
 L0 = 1.0
 
@@ -95,9 +141,6 @@ hrw = torch.tensor(hrw, dtype=torch.complex64, device=device)
 # Boundary condition
 boundary_type = 'periodic'
 
-
-
-
 # custom mode input fields
 modes = np.load('modes_FMF.npy')
 modes = torch.tensor(modes, dtype=torch.complex64, device=device)
@@ -129,14 +172,41 @@ print(f'The simulation starts.', flush=True)
 start_time = time.time()
 sim.run()
 print(f'Total calculation time : {time.time() - start_time}', flush=True)
-output_fields = sim.fields.fields.cpu().numpy()
+
+
 input_fields = input_fields.fields.cpu().numpy()
 input_fields1 = input_fields[0]
 input_fields2 = input_fields[1]
 input_fields3 = input_fields[2]
+output_fields = sim.fields.fields.cpu().numpy()
 output_fields1 = output_fields[0]
 output_fields2 = output_fields[1]
 output_fields3 = output_fields[2]
+saved_temporal_fields = sim.saved_temporal_fields.cpu().numpy()
+
+np.save(f'fields_{int(L0*100)}cm_{total_energy}nJ.npy', output_fields)
+np.save(f'temporal_fields_{int(L0*100)}cm_{total_energy}nJ.npy', saved_temporal_fields)
+
+plt.figure()
+plt.imshow(saved_temporal_fields[0].real, aspect='auto', cmap='turbo', origin='lower')
+plt.savefig(f'temporal_fields_{int(L0*100)}cm_{total_energy}nJ.png', dpi=300)
+# plt.show()
+
+
+# fobj = pulse_width_rms_diff(output_fields)
+# print(f'Pulse width: {fobj}')
+
+# Gradient caclulation using finite difference method
+# d_coefficients = torch.zeros((BATCH_NUM, num_mode), dtype=torch.complex64)
+# for i in range(num_mode):
+#     pass
+
+# input_fields1 = input_fields[0]
+# input_fields2 = input_fields[1]
+# input_fields3 = input_fields[2]
+# output_fields1 = output_fields[0]
+# output_fields2 = output_fields[1]
+# output_fields3 = output_fields[2]
 # plot_fields(input_fields1, domain, wvl0=wvl0, core_radius=core_radius)
 # plot_fields(input_fields2, domain, wvl0=wvl0, core_radius=core_radius)
 # plot_fields(input_fields3, domain, wvl0=wvl0, core_radius=core_radius)
@@ -145,4 +215,3 @@ output_fields3 = output_fields[2]
 # plot_fields(output_fields3, domain, wvl0=wvl0, core_radius=core_radius)
 # plot_fields(output_fields2, domain, wvl0=wvl0, core_radius=core_radius)
 # plt.show()
-np.save(f'fields_{int(L0*100)}cm_{total_energy}nJ.npy', output_fields)

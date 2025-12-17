@@ -61,11 +61,13 @@ def plot_fields(fields, domain, wvl0=1030e-9, core_radius=None, extent=None, int
     time_window = domain.time_window
     dt = time_window / Nt
     t = np.linspace(-0.5 * time_window, 0.5 * time_window, Nt)
-    freq = np.fft.fftfreq(Nt, dt)
+    freq = np.fft.fftfreq(Nt, dt * 1e-12)
     f0 = C0 / wvl0
+
     freq_abs = f0 + freq
     wavelength = C0 / freq_abs     
     wavelength_nm = np.sort(wavelength * 1e9)
+    
     extent = [-0.5 * domain.Lx, 0.5 * domain.Lx, -0.5 * domain.Ly, 0.5 * domain.Ly]
 
     # subplot 0 : spatial profile
@@ -96,9 +98,10 @@ def plot_fields(fields, domain, wvl0=1030e-9, core_radius=None, extent=None, int
         E_spectrum = np.fft.ifftshift(fields, axes=2)
         E_spectrum = np.sum(np.abs(np.fft.fft(E_spectrum, axis=2))**2, axis=(0,1))
         E_spectrum = np.fft.fftshift(E_spectrum)
-        ax[2].plot(freq_abs / 1e12, E_spectrum)
-        ax[2].set_xlabel('Frequency (THz)')
+        ax[2].plot(wavelength_nm, E_spectrum)
+        ax[2].set_xlabel('Wavelength (nm)')
         ax[2].set_ylabel('Intensity (a.u.)')
+        ax[2].set_xlim(1400, 1800)
         plt.tight_layout()
 
 
