@@ -11,6 +11,8 @@ from dataclasses import dataclass
 class SimConfig:
     center_wavelength: float
     num_save: int = -1
+    save_spatial: bool = False
+    save_temporal: bool = True
     dispersion: bool = True
     kerr: bool = True
     raman: bool = False
@@ -20,139 +22,91 @@ class SimConfig:
     ds_y: int = 1
     ds_t: int = 1
 
-
 class Simulation:
-    def __init__(self, domain, fiber, fields, boundary, config=None):
+    def __init__(self, domain, fiber, fields, boundary, config):
         self.domain = domain
         self.fiber = fiber
         self.fields = fields
         self.boundary = boundary
-        # config 처리 로직 유지
         if config is None:
-            # config = SimConfig() # (사용자 환경에 맞게)
-            pass 
+            config = SimConfig()
         else:
             self.config = config
         
+        self.cnt = 0
+        self.cnt_xz = 0
+        self.cnt_zt = 0
+
+
+        # currently not used
+        # self.num_save_xz = 500
+        # self.num_save_zt = 10
+
         self.device = domain.device
 
-        # 계산 함수 호출
         self.calculate_K()
         self.calculate_Dt()
-        
-        # [핵심 수정 1] self.D = self.Dt + self.KZ 삭제! (메모리 폭발 원인)
-        # 대신 Propagator를 미리 작게 쪼개서 계산해둡니다.
-        
-        # 공간 Propagator (Size: 1 x Nx x Ny x 1) - 매우 작음
-        self.prop_spatial = torch.exp(1j * self.KZ * self.domain.dz / 2)
-        
-        # 시간 Propagator (Size: 1 x 1 x 1 x Nt) - 매우 작음
-        self.prop_temporal = torch.exp(1j * self.Dt * self.domain.dz / 2)
+        self.D = self.Dt + self.KZ
 
     def calculate_K(self):
         self.k0 = 2 * torch.pi / self.config.center_wavelength
-        # KZ 계산
         self.KZ = -(self.domain.KX[:,:,0]**2 + self.domain.KY[:,:,0]**2) / (2 * self.k0 * self.fiber.n_clad)
-        # Kin 계산
         self.Kin = self.k0 * (self.fiber.n - self.fiber.n_clad)
 
-        # 차원 맞추기 (Broadcasting 준비)
-        self.KZ = self.KZ[None, :, :, None]   # (1, Nx, Ny, 1)
-        self.Kin = self.Kin[None, :, :, None] # (1, Nx, Ny, 1)
+        self.KZ = self.KZ[None, :, :, None]
+        self.Kin = self.Kin[None, :, :, None]
 
     def calculate_Dt(self):
-        omega = self.domain.W[0, 0, :]
-        # Dt 계산
+        omega = self.domain.W[0, 0, :]                     # shape: (Nt,)
         self.Dt = (self.fiber.beta2 * omega**2) / 2.0 + (self.fiber.beta3 * omega**3) / 6.0
-        # 차원 맞추기
-        self.Dt = self.Dt.view(1, 1, 1, -1)   # (1, 1, 1, Nt)
+        self.Dt = self.Dt.view(1, 1, 1, -1)
 
+    def _propagate_one_step(self, fields,):
 
-
-    def _propagate_one_step(self, fields):
-        
-        # ----------------------------------------------------
-        # 1. Linear Half-step
-        # ----------------------------------------------------
-        # 기존: fields = fields * torch.exp(1j * self.D * dz / 2)  <-- (X) 메모리 터짐
-        
-        # [수정] In-place 연산으로 순차 적용
-        fields.mul_(self.prop_spatial)   # 공간 효과 적용 (Broadcasting)
-        fields.mul_(self.prop_temporal)  # 시간 효과 적용 (Broadcasting)
-        
-        # IFFT (메모리 할당 발생하지만 불가피함)
+        # Linear propagation calculation (Half-step)
+        fields = fields * torch.exp(1j  * self.D * self.domain.dz / 2)
         fields = torch.fft.ifftn(fields, dim=(1, 2, 3))
 
-        # ----------------------------------------------------
-        # 2. Nonlinear Step (메모리 최적화 적용)
-        # ----------------------------------------------------
-        # 기존: fields = fields * torch.exp(1j * (Kin + n2*k0*|A|^2)*dz) <-- (X) 메모리 터짐
-        
-        # 미리 계산해둘 상수들 (루프 안에서 반복 계산 방지)
-        # gamma_dz = n2 * k0 * dz
-        gamma_dz = self.fiber.n2 * self.k0 * self.domain.dz
-        
-        # Kin term도 dz를 미리 곱해둡니다. (Kin * dz)
-        # self.Kin은 (1, Nx, Ny, 1) 형태이므로 broadcasting 됩니다.
-        kin_dz = self.Kin * self.domain.dz
+        # Nonlinear propagation calculation
+        fields = fields * torch.exp(1j * (self.Kin + self.fiber.n2 * self.k0 * torch.abs(fields)**2) * self.domain.dz)
 
-        # 시간축(Nt) 길이
-        Nt = fields.shape[-1]
-        
-        # 청크 사이즈: 메모리 상태에 따라 조절 (예: 10 ~ 50)
-        # 작을수록 메모리는 안전하지만 속도는 아주 조금 느려질 수 있음
-        chunk_size = 2**8 
-
-        for i in range(0, Nt, chunk_size):
-            # 1) 시간축 슬라이싱 (View만 생성하므로 메모리 거의 안 씀)
-            end = min(i + chunk_size, Nt)
-            f_slice = fields[..., i:end] 
-            
-            # 2) 조각에 대해서만 |E|^2 및 위상 계산 (메모리 아주 조금 사용)
-            # phase_slice는 (Batch, Nx, Ny, chunk_size) 크기라 매우 작음
-            phase_slice = f_slice.abs()
-            phase_slice.square_()        # |A|^2
-            
-            # 3) 비선형 위상 계산 (In-place)
-            phase_slice.mul_(gamma_dz)   # n2*k0*dz*|A|^2
-            phase_slice.add_(kin_dz)     # + Kin*dz (Broadcasting)
-            
-            # 4) 연산자 생성 및 적용
-            # exp(1j * phase) 대신 polar 사용
-            nonlinear_op = torch.polar(torch.ones_like(phase_slice), phase_slice)
-            
-            # 5) 원본 fields에 덮어쓰기 (In-place)
-            # f_slice는 fields의 View이므로, 여기에 곱하면 원본 fields가 바뀝니다.
-            f_slice.mul_(nonlinear_op)
-            
-            # 루프 돌 때마다 임시 변수 삭제 (안전장치)
-            del phase_slice
-            del nonlinear_op
-
-        # ----------------------------------------------------
-        # 3. Linear Half-step (Back to spectral domain)
-        # ----------------------------------------------------
         fields = torch.fft.fftn(fields, dim=(1, 2, 3))
-        
-        # 순차 적용 (In-place)
-        fields.mul_(self.prop_spatial)
-        fields.mul_(self.prop_temporal)
-        
-        # 경계 조건 적용
-        fields.mul_(self.boundary.boundary)
+        fields = fields * torch.exp(1j  * self.D * self.domain.dz / 2)
+        fields = fields * self.boundary.boundary
 
         return fields
 
     def run(self,):
         fields = self.fields.fields
+        if self.config.num_save > 0:
+            save_step = self.domain.Nz // self.config.num_save
+            if self.config.save_spatial:
+                self.saved_spatial_fields = torch.zeros((self.config.batch_num, self.config.num_save+1, self.domain.Nx, self.domain.Ny), device=self.device, dtype=fields.dtype)
 
-        
+            if self.config.save_temporal:
+                self.saved_temporal_fields = torch.zeros((self.config.batch_num, self.config.num_save+1, self.domain.Nt), device=self.device, dtype=fields.dtype)
+
         fields = torch.fft.fftn(fields, dim=(1, 2, 3))
 
         for i in tqdm(range(self.domain.Nz), disable=is_slurm_job):            
             fields = self._propagate_one_step(fields,)
-            if i % 100 == 0:
-                print(f'iteration {i}', flush=True)
-        
+
+            # if self.config.num_save > 0 and i % save_step == 0:
+            #     spatial_fields = torch.fft.ifftn(fields)
+            #     spatial_fields = torch.sum(torch.abs(spatial_fields)**2, axis=2)
+            #     spatial_fields = spatial_fields[::2, ::2]
+            #     self.spatial_intensities_sequential[self.cnt, :, :] = spatial_fields
+            #     self.cnt += 1
+            # if i % save_step_xz == 0:
+            #     self.fields_xz[self.cnt_xz] = torch.fft.ifftn(fields,)[:, fields.shape[1]//2, fields.shape[2]//2]
+            #     self.cnt_xz += 1
+            # if i % save_step_zt == 0:
+            #     E_temporal = torch.sum(torch.abs(torch.fft.ifftn(fields))**2, axis=(0,1))
+            #     # self.fields_zt[self.cnt_zt] = torch.fft.ifftn(fields[fields.shape[0]//2, fields.shape[1]//2, :])
+            #     self.fields_zt[self.cnt_zt] = E_temporal
+            #     self.cnt_zt += 1
+
         fields = torch.fft.ifftn(fields, dim=(1, 2, 3))
-        self.output_fields = fields
+        self.fields.fields = fields
+        # save_fields = fields[:, field_shape[1]//2-field_shape[1]//4:field_shape[1]//2+field_shape[1]//4, field_shape[2]//2-field_shape[2]//4:field_shape[2]//2+field_shape[2]//4, field_shape[3]//2-field_shape[3]//4:field_shape[3]//2+field_shape[3]//4]
+        # self.spatiotemporal_fields[:, 1, :, :, :] = save_fields[:, ::self.config.ds_x, ::self.config.ds_y, ::self.config.ds_t]

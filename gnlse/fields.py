@@ -25,10 +25,10 @@ class Fields:
         if input_type == 'gaussian':
             spatial_profile = self._gaussian_beam(domain, beam_radius, cx, cy,
                                     device=self.device, rdtype=self.rdtype, cdtype=self.cdtype)  # (Nx,Ny)
-            if phase_map is not None:
-                spatial_profile = spatial_profile * torch.exp(1j * phase_map)
-                # FFT of spatial_profile for launching beam
-                spatial_profile = torch.fft.fftshift(torch.fft.fftn(spatial_profile))
+            # if phase_map is not None:
+            #     spatial_profile = spatial_profile * torch.exp(1j * phase_map)
+            #     # FFT of spatial_profile for launching beam
+            #     spatial_profile = torch.fft.fftshift(torch.fft.fftn(spatial_profile))
                 
         elif input_type == 'custom':
             spatial_profile = fields

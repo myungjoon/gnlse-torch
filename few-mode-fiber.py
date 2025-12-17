@@ -21,10 +21,18 @@ torch.manual_seed(42)
 # Fiber NA : 0.25
 # n2 : 2.3e-20 m^2/W
 
+
+
+
 DISPERSION = True
 KERR = True
-RAMAN = True
+RAMAN = False
 SELF_STEEPING = False
+
+BATCH_NUM = 2
+DS_X = 1
+DS_Y = 1
+DS_T = 1
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
@@ -36,7 +44,7 @@ precision = 'double'
 
 num_save = 100
 wvl0 = 1550e-9
-L0 = 3.0
+L0 = 1.0
 
 # Pulse
 total_energy = 5 # nJ
@@ -56,6 +64,7 @@ n2 = 2.3e-20
 beta2 = 1.655e-26 * (1e12**2)
 beta3 = 23.3e-42 * (1e12**3)
 
+
 print(f'beta2: {beta2}, beta3: {beta3}', flush=True)
 
 # Simulation domain parameters
@@ -63,14 +72,34 @@ Lx, Ly = 4 * core_radius, 4 * core_radius
 unit = 1e-6
 Nx, Ny = 64, 64
 print(f'The grid size is {Nx}x{Ny}')
-dz = 1e-5
+dz = 5e-5
 Nz = round(L0 / dz)
+
+ts = np.linspace(0, time_window, Nt)
+t1 = 12.2e-3
+t2 = 32e-3
+
+def get_hrw(ts, t1=12.2e-3, t2=32e-3):
+    hr = ((t1**2 + t2**2) / (t1 * t2**2)) * np.sin(ts / t1) * np.exp(-ts / t2)
+    hrw = np.fft.ifft(hr) * Nt
+    return hrw
+
+hrw = get_hrw(ts)
+
+# plt.plot(ts, hrw)
+# plt.show()
+
+hrw = torch.tensor(hrw, dtype=torch.complex64, device=device)
+
 
 # Boundary condition
 boundary_type = 'periodic'
 
+
+
+
 # custom mode input fields
-modes = np.load('modes.npy')
+modes = np.load('modes_FMF.npy')
 modes = torch.tensor(modes, dtype=torch.complex64, device=device)
 num_mode = 3
 
@@ -78,53 +107,42 @@ domain = Domain(Lx, Ly, time_window, Nx, Ny, Nt, Nz, dz, precision=precision, de
 fiber = GRINFiber(domain, n_core, n_clad, beta2=beta2, beta3=beta3, n2=n2, radius=core_radius,)
 boundary = Boundary(domain, boundary_type)
 config = SimConfig(center_wavelength=wvl0, dispersion=DISPERSION, kerr=KERR, raman=RAMAN, self_steeping=SELF_STEEPING,
-                 batch_num=BATCH_NUM, num_save=num_save, ds_x=DS_X, ds_y=DS_Y, ds_t=DS_T)
+                        batch_num=BATCH_NUM, num_save=num_save, ds_x=DS_X, ds_y=DS_Y, ds_t=DS_T)
 
 # Preallocate arrays to store results from all simulations
 all_spatiotemporal_fields = []
 all_spatial_intensities = []
 all_spatial_intensities_sequential = []
 
-
-num_iters = (num_data + BATCH_NUM - 1) // BATCH_NUM  # Ceiling division to handle all data points
 print(f'batch size: {BATCH_NUM}')
-print(f'number of iterations: {num_iters}')
 modes = modes.unsqueeze(0)
 
-# coefficients = torch.randn((num_data, num_mode), dtype=torch.complex64)
-coefficients = torch.ones((num_data, num_mode), dtype=torch.complex64)
-# coefficients[0,0] = 1
-# coefficients[1] = coefficients[1] * torch.tensor(np.exp(1j * np.pi / 4), dtype=torch.complex64)
+# coefficients = torch.randn((BATCH_NUM, num_mode), dtype=torch.complex64)
+coefficients = torch.tensor([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=torch.complex64)
 coefficients = coefficients.to(device)
+coefficients = coefficients[:,:, None, None]
+fields = torch.sum(coefficients * modes, dim=1)
 
-all_spatiotemporal_fields = np.zeros((num_data, 2, Nx//DS_X//2, Ny//DS_Y//2, Nt//DS_T//2), dtype=np.complex64)
+input_fields = Fields(domain, input_type='custom', fields=fields, tfwhm=tfwhm, total_energy=total_energy, t_center=0,) # spatially gaussian and gaussian pulse
+sim = Simulation(domain, fiber, input_fields, boundary, config)
+print(f'The simulation starts.', flush=True)
 start_time = time.time()
-
-
-
-
-coeffs = coefficients[start_idx:end_idx] 
-
-batch_size = coeffs.shape[0]
-modes_batch = modes.expand(batch_size, -1, -1, -1)  # Expand to (batch_size, num_mode, Nx, Ny)
-input_fields = torch.sum(coeffs[:,:,None, None] * modes_batch[:, :num_mode], dim=1)
-
-
-config_iter = SimConfig(center_wavelength=wvl0, dispersion=DISPERSION, kerr=KERR, raman=RAMAN, self_steeping=SELF_STEEPING,
-                        batch_num=batch_size, num_save=num_save, ds_x=DS_X, ds_y=DS_Y, ds_t=DS_T)
-input = Fields(domain, input_type='custom', fields=input_fields, tfwhm=tfwhm, total_energy=total_energy, t_center=0,) # spatially gaussian and gaussian pulse
-sim = Simulation(domain, fiber, input, boundary, config_iter)
-
-print(f'The simulation {n} starts.', flush=True)
 sim.run()
-
-all_spatiotemporal_fields[start_idx:end_idx] = sim.spatiotemporal_fields.cpu().numpy()
-# spatiotemporal_fields = sim.spatiotemporal_fields.cpu().numpy()
-# spatiotemporal_fields = spatiotemporal_fields[:, 16:112, 16:112, 32:224]
-# spatial_intensities = sim.spatial_intensities.cpu().numpy()
-# spatial_intensities_sequential = sim.spatial_intensities_sequential.cpu().numpy()
-
 print(f'Total calculation time : {time.time() - start_time}', flush=True)
-
-np.save(f'spatiotemporal_fields_{int(L0*100)}cm_{total_energy}nJ_{num_data}_{BATCH_NUM}.npy', all_spatiotemporal_fields)
-
+output_fields = sim.fields.fields.cpu().numpy()
+input_fields = input_fields.fields.cpu().numpy()
+input_fields1 = input_fields[0]
+input_fields2 = input_fields[1]
+input_fields3 = input_fields[2]
+output_fields1 = output_fields[0]
+output_fields2 = output_fields[1]
+output_fields3 = output_fields[2]
+plot_fields(input_fields1, domain, wvl0=wvl0, core_radius=core_radius)
+plot_fields(input_fields2, domain, wvl0=wvl0, core_radius=core_radius)
+plot_fields(input_fields3, domain, wvl0=wvl0, core_radius=core_radius)
+# plot_fields(output_fields1, domain, wvl0=wvl0, core_radius=core_radius)
+# plot_fields(output_fields2, domain, wvl0=wvl0, core_radius=core_radius)
+# plot_fields(output_fields3, domain, wvl0=wvl0, core_radius=core_radius)
+# plot_fields(output_fields2, domain, wvl0=wvl0, core_radius=core_radius)
+plt.show()
+np.save(f'fields_{int(L0*100)}cm_{total_energy}nJ.npy', output_fields)
