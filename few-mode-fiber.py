@@ -137,12 +137,12 @@ input_fields3 = input_fields[2]
 output_fields1 = output_fields[0]
 output_fields2 = output_fields[1]
 output_fields3 = output_fields[2]
-plot_fields(input_fields1, domain, wvl0=wvl0, core_radius=core_radius)
-plot_fields(input_fields2, domain, wvl0=wvl0, core_radius=core_radius)
-plot_fields(input_fields3, domain, wvl0=wvl0, core_radius=core_radius)
+# plot_fields(input_fields1, domain, wvl0=wvl0, core_radius=core_radius)
+# plot_fields(input_fields2, domain, wvl0=wvl0, core_radius=core_radius)
+# plot_fields(input_fields3, domain, wvl0=wvl0, core_radius=core_radius)
 # plot_fields(output_fields1, domain, wvl0=wvl0, core_radius=core_radius)
 # plot_fields(output_fields2, domain, wvl0=wvl0, core_radius=core_radius)
 # plot_fields(output_fields3, domain, wvl0=wvl0, core_radius=core_radius)
 # plot_fields(output_fields2, domain, wvl0=wvl0, core_radius=core_radius)
-plt.show()
+# plt.show()
 np.save(f'fields_{int(L0*100)}cm_{total_energy}nJ.npy', output_fields)
