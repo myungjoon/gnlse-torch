@@ -90,7 +90,7 @@ precision = 'double'
 
 num_save = 100
 wvl0 = 1550e-9
-L0 = 3.0
+L0 = 1e-3
 
 # Pulse
 total_energy = 1 # nJ
@@ -126,27 +126,15 @@ t1 = 12.2e-3
 t2 = 32e-3
 
 def get_hrw(ts, dt, t1=12.2e-3, t2=32e-3):
-    """
-    ts: (Nt,) time array in ps, starting at 0 (0..(Nt-1)dt)
-    dt: time step in ps
-    t1,t2: Raman parameters in ps (silica: 12.2 fs, 32 fs -> 12.2e-3 ps, 32e-3 ps)
-
-    Returns:
-      hrw = FFT(h_discrete), where h_discrete = h(ts)*dt and sum(h_discrete)=1
-    """
-    hr = ((t1**2 + t2**2) / (t1 * t2**2)) * np.sin(ts / t1) * np.exp(-ts / t2)
-    hr[ts < 0] = 0.0
-
-    # discrete convolution kernel: multiply by dt then normalize so sum=1
-    h_discrete = hr * dt
-    h_discrete = h_discrete / (np.sum(h_discrete) + 1e-30)
-    hrw = np.fft.fft(h_discrete)
+    hr = ((t1**2 + t2**2) / (t1 * t2**2)) * np.sin(ts / t1) * np.exp(-ts / t2)    
+    hrw = np.fft.ifft(hr)
     return hrw
 
 # plt.plot(ts, hrw)
 # plt.show()
 ts = np.arange(Nt) * dt   # 0..(Nt-1)dt in ps (endpoint 문제 없음)
 hrw = get_hrw(ts, dt, t1=12.2e-3, t2=32e-3)
+hrw = hrw * Nt * dt
 hrw = torch.tensor(hrw, dtype=torch.complex64, device=device)
 
 

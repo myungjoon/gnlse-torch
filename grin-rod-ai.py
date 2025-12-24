@@ -17,18 +17,18 @@ DS_T = 2
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
-
+device = torch.device(f'cuda:0' if torch.cuda.is_available() else 'cpu')
+print(f'Using device: {device}', flush=True)
 precision = 'single'
 
 num_save = -1
 wvl0 = 775e-9
-L0 = 0.15 # 10 cm
+L0 = 3.0 # 10 cm
 
 # Pulse
-total_energy = 0.1 # nJ
+total_energy = 5 # nJ
 Nt = 2**10
-time_window = 15 # ps
+time_window = 20 # ps
 dt = time_window / Nt
 dt_s = dt * 1e-12  # s
 tfwhm = 0.5 # ps
@@ -48,7 +48,7 @@ print(f'beta2: {beta2}, beta3: {beta3}', flush=True)
 # Simulation domain parameters
 Lx, Ly = 4 * core_radius, 4 * core_radius
 unit = 1e-6
-Nx, Ny = 2**11, 2**11
+Nx, Ny = 2**9, 2**9
 print(f'The grid size is {Nx}x{Ny}x{Nt}', flush=True)
 dz = 1e-5
 Nz = round(L0 / dz)
@@ -58,6 +58,7 @@ boundary_type = 'periodic'
 
 # custom mode input fields
 modes = np.load('modes_2048.npy')
+modes = modes[:,::4,::4]
 modes = torch.tensor(modes, dtype=torch.complex64, device=device)
 num_mode = 6
 

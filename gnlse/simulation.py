@@ -129,6 +129,8 @@ class Simulation:
                 self.saved_spectrum = torch.zeros((self.config.batch_num, self.config.num_save+1, self.domain.Nt), device=self.device, dtype=fields.dtype)
                 self.saved_spectrum[:, self.cnt, :] = torch.fft.fftshift(torch.sum(torch.abs(torch.fft.fft(torch.fft.ifftshift(fields, axis=-1), axis=-1))**2, axis=(-3,-2)), axis=-1)
             self.cnt += 1
+        else:
+            save_step = -1
         fields = torch.fft.fftn(fields, dim=(1, 2, 3))
 
         for i in tqdm(range(self.domain.Nz), disable=is_slurm_job):   
