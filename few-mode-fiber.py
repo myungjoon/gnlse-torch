@@ -90,7 +90,7 @@ precision = 'double'
 
 num_save = 100
 wvl0 = 1550e-9
-L0 = 3.0
+L0 = 1e-3
 
 # Pulse
 total_energy = 1 # nJ
@@ -172,12 +172,16 @@ plt.show()
 
 # comparison of hr from matlab
 
-
-
 plt.plot(ts, hr)
 # plt.plot(ts, np.abs(hrw))
 plt.xlim(0, 1.6)
 plt.show()
+
+
+
+ts = np.arange(Nt) * dt   # 0..(Nt-1)dt in ps (endpoint 문제 없음)
+hrw = get_hrw(ts, dt, t1=12.2e-3, t2=32e-3)
+hrw = hrw * Nt * dt
 hrw = torch.tensor(hrw, dtype=torch.complex64, device=device)
 
 
