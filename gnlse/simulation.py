@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 @dataclass
 class SimConfig:
-    center_wavelength: float
+    wvl0: float
     num_save: int = -1
     save_spatial: bool = False
     save_temporal: bool = True
@@ -25,7 +25,7 @@ class SimConfig:
     ds_t: int = 1
 
 class Simulation:
-    def __init__(self, domain, fiber, fields, boundary, config):
+    def __init__(self, domain, fiber, fields, boundary, config, mode_fields=None):
         self.domain = domain
         self.fiber = fiber
         self.fields = fields
@@ -34,16 +34,9 @@ class Simulation:
             config = SimConfig()
         else:
             self.config = config
-        
+        self.mode_fields = mode_fields
         self.cnt = 0
-        self.cnt_xz = 0
-        self.cnt_zt = 0
-
-
-        # currently not used
-        # self.num_save_xz = 500
-        # self.num_save_zt = 10
-
+        
         self.device = domain.device
 
         self.calculate_K()
@@ -51,7 +44,7 @@ class Simulation:
         self.D = self.Dt + self.KZ
 
     def calculate_K(self):
-        self.k0 = 2 * torch.pi / self.config.center_wavelength
+        self.k0 = 2 * torch.pi / self.config.wvl0
         self.KZ = -(self.domain.KX[:,:,0]**2 + self.domain.KY[:,:,0]**2) / (2 * self.k0 * self.fiber.n_clad)
         self.Kin = self.k0 * (self.fiber.n - self.fiber.n_clad)
 
@@ -91,13 +84,9 @@ class Simulation:
         fields = fields * self.boundary.boundary
 
         if is_save_fields:
-            
 
             fields = torch.fft.ifftn(fields, dim=(1, 2, 3))
             intensity = torch.abs(fields)**2
-
-            # diff = torch.mean(torch.abs(R_t - intensity)) / (torch.mean(intensity) + 1e-12)
-            # print(f"Raman diff ratio: {diff.item()}", flush=True)
 
             if self.config.save_spatial:
                 self.saved_spatial_fields[self.cnt, :, :] = torch.sum(intensity, axis=2)
@@ -110,15 +99,21 @@ class Simulation:
 
         return fields
 
+
+    def mode_decomposition(self, fields):
+        # overlap integral between fields and mode_fields
+        overlap = torch.sum(fields * self.mode_fields, axis=(-3,-2,-1))
+        return overlap
+
     def run(self,):
         if self.fiber.hrw is not None:
-            # dimension
             self.fiber.hrw = self.fiber.hrw.unsqueeze(0).unsqueeze(0).unsqueeze(0)
         # self.calculate_raman_response()
-
+        
         fields = self.fields.fields
         if self.config.num_save > 0:
             save_step = self.domain.Nz // self.config.num_save
+            self.modes = torch.zeros((self.config.batch_num, self.config.num_save+1), dtype=fields.dtype, device=self.device)
             if self.config.save_spatial:
                 self.saved_spatial_fields = torch.zeros((self.config.batch_num, self.config.num_save+1, self.domain.Nx, self.domain.Ny), device=self.device, dtype=fields.dtype)
             if self.config.save_temporal:
@@ -128,6 +123,7 @@ class Simulation:
             if self.config.save_spectrum:
                 self.saved_spectrum = torch.zeros((self.config.batch_num, self.config.num_save+1, self.domain.Nt), device=self.device, dtype=fields.dtype)
                 self.saved_spectrum[:, self.cnt, :] = torch.fft.fftshift(torch.sum(torch.abs(torch.fft.fft(torch.fft.ifftshift(fields, axis=-1), axis=-1))**2, axis=(-3,-2)), axis=-1)
+            self.modes[:, self.cnt] = self.mode_decomposition(fields)
             self.cnt += 1
         fields = torch.fft.fftn(fields, dim=(1, 2, 3))
 

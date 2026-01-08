@@ -20,7 +20,6 @@ class Fields:
         self.rdtype = domain.rdtype
         self.cdtype = domain.cdtype
         
-
         # Spatial Gaussian Beam
         if input_type == 'gaussian':
             spatial_profile = self._gaussian_beam(domain, beam_radius, cx, cy,
@@ -59,7 +58,6 @@ class Fields:
     @staticmethod
     def _temporal_pulse(domain, tfwhm, t_center=0.0,
                         device=None, rdtype=torch.float32, cdtype=torch.complex64):
-        # domain.t은 (Nx,Ny,Nt)이므로 한 점(x0,y0)에서 t축만 가져옴
         t = domain.t[0, 0, :].to(device=device, dtype=rdtype)  # (Nt,)
         
         # if length of the t is 1, then return 1

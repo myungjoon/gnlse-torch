@@ -221,59 +221,14 @@ def plot_input_and_output_beam(input_field, output_field, radius=10, extent=None
 
     plt.tight_layout()
 
-def plot_3d_profile(fields, threshold_ratio=0.9, point_size=3, 
-                   alpha=0.9, colormap='turbo', 
-                   background_color='black', figsize=(10, 8)):
-    
-    pass
-
-def make_3d_animation(fields, waveguide_radius=10, propagation_length=100, filename=None, extent=None, roi=None, interpolation=None):
-    import os
-    if not os.path.exists('frames'):
-        os.makedirs('frames')
-
-    import imageio
-    fps = 10  # Frames per second
-
-    intensities = np.abs(fields)**2
-
-    
-    num_frames = intensities.shape[0]
-    unit_propagation_length = propagation_length / num_frames
-
-    plt.figure()
-    for i in range(num_frames):
-
-        vmin = np.min(intensities[i])
-        vmax = np.max(intensities[i])
-        norm = Normalize(vmin=vmin, vmax=vmax)
-
-        extent = [-2*waveguide_radius/1e-6, 2*waveguide_radius/1e-6, -2*waveguide_radius/1e-6, 2*waveguide_radius/1e-6]
-
-        fig, ax = plt.subplots(figsize=(8, 6))
-        ax.imshow(intensities[i], cmap='turbo', norm=norm, origin='lower', extent=extent, interpolation=interpolation)
-        # ax.imshow(intensities[i], cmap='turbo', norm=norm, origin='lower', interpolation=interpolation)
-        plt.xlabel(r'x ($\mu m$)', fontsize=18)
-        plt.ylabel(r'y ($\mu m$)', fontsize=18)
-
-        # ticks fontsize
-        ax.tick_params(axis='both', which='major', labelsize=18)
-        ax.tick_params(axis='both', which='minor', labelsize=18)
-
-        waveguide = Circle((0, 0), waveguide_radius/1e-6, fill=False, linestyle='--', edgecolor='white', linewidth=2.0)
-        ax.add_patch(waveguide)
-        
-        # At each frame, place text at the top right corner with the current propagation distance dz*i
-        current_z = i * unit_propagation_length  # Adjust this value based on your simulation parameters
-        ax.text(0.95, 0.95, f'z = {current_z:.2f} cm', transform=ax.transAxes, ha='right', va='top', fontsize=22, color='white')
-        # Save frame
-        # if i in (0, 277, 554, 831):
-        #     plt.savefig(f'frames/frame_{i:03d}.svg', format='svg', bbox_inches='tight', dpi=300)
-        # else:
-        plt.savefig(f'frames/frame_{i:03d}.png', format='png', bbox_inches='tight')
-        plt.close()
-
-    with imageio.get_writer(filename, fps=fps) as writer:
-        for i in range(num_frames):
-            image = imageio.imread(f'frames/frame_{i:03d}.png')
-            writer.append_data(image)
+def plot_intensity(field, radius=None, extent=None, title=None):
+    total_intensity = np.sum(np.abs(field)**2, axis=-1)
+    plt.figure(figsize=(5,5.5), layout='constrained')
+    plt.imshow(total_intensity, aspect='auto', origin='lower', cmap='turbo', extent=extent)
+    if radius is not None:
+        circle = Circle((0, 0), radius, color='white', fill=False, linewidth=2.0)
+        plt.gca().add_patch(circle)
+    plt.xticks([])
+    plt.yticks([])
+    if title is not None:
+        plt.title(title, fontsize=18)
