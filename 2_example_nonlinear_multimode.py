@@ -6,6 +6,8 @@ import os, time
 from gnlse import Domain, Fiber, Fields, Boundary, Simulation, SimConfig
 from gnlse import plot_fields, plot_index_profile, plot_intensity
 
+def calculate_total_energy(fields, dx=1e-6, dy=1e-6, dt=1e-12):
+    return np.sum(np.abs(fields)**2) * dx * dy * dt
 
 DISPERSION = True
 KERR = True
@@ -17,7 +19,7 @@ DS_X = 1
 DS_Y = 1
 DS_T = 1
 
-MODE_DECOMP_STEP = 100
+MODE_DECOMP_STEP = 0
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
@@ -45,14 +47,14 @@ def get_n_core(wvl, B, C):
 
 if __name__ == '__main__':
 
-    num_save = 50
+    num_save = 20
     wvl0 = 1030e-9
     L0 = 0.1
 
     # Pulse
-    total_energy = 5.0 # nJ
+    total_energy = 0.01 # nJ
     Nt = 2**11
-    time_window = 10 # ps
+    time_window = 4 # ps
     dt = time_window / Nt
     tfwhm = 0.1 # ps
     t = np.linspace(-0.5 * time_window, 0.5 * time_window, Nt)
@@ -71,16 +73,18 @@ if __name__ == '__main__':
     # Simulation domain parameters
     Lx, Ly = 4 * core_radius, 4 * core_radius
     unit = 1e-6
-    Nx, Ny = 128, 128
+    Nx, Ny = 64, 64
     print(f'The grid size is {Nx}x{Ny}')
-    
+    dx, dy = Lx / Nx, Ly / Ny
+
+
     Nf = 20
     c = 299.792458
-    freq_range = 100  
+    freq_range = 100
     freq_min = c/wvl0*1e-6 + freq_range/2
     freq_max = c/wvl0*1e-6 - freq_range/2
     
-    f = np.linspace(freq_min,freq_max, Nf)
+    f = np.linspace(freq_min, freq_max, Nf)
     wvl = c/f *1e-6
 
     # Sellmeier equation
@@ -135,11 +139,11 @@ if __name__ == '__main__':
     print(f'L_d/L_nl = {L_d/L_nl}')
 
     # Boundary condition
-    boundary_type = 'periodic'
+    boundary_type = 'absorbing'
 
     # custom mode input fields
     num_modes = 6
-    mode_fields = np.load('modes_128x128.npy')
+    mode_fields = np.load(f'modes_{Nx}x{Ny}.npy')
     mode_fields = torch.tensor(mode_fields, dtype=complex_type, device=device)
 
     domain = Domain(Lx, Ly, time_window, Nx, Ny, Nt, Nz, dz, precision=precision, device=device)
@@ -152,10 +156,10 @@ if __name__ == '__main__':
     mode_fields = mode_fields.unsqueeze(0)
 
     coeffs = torch.ones(num_modes, dtype=complex_type)
-    coeffs = torch.randn(num_modes, dtype=complex_type)
+    # coeffs = torch.randn(num_modes, dtype=complex_type)
+    coeffs[:4] = 0
+    coeffs[5:] = 0
     print(f'coeffs: {coeffs}')
-    # coeffs[:4] = 0
-    # coeffs[5:] = 0
     coeffs = coeffs.to(device)
     coeffs = torch.reshape(coeffs, (-1, num_modes, 1, 1))
     input_fields = torch.sum(coeffs * mode_fields, dim=1)
@@ -163,28 +167,27 @@ if __name__ == '__main__':
 
     extent = [-Lx/2, Lx/2, -Ly/2, Ly/2]
     input_fields = initial_fields.fields[0].cpu().numpy()
+    
+
+
     plot_intensity(input_fields, radius=core_radius, extent=extent, title='Input Field')
-    plt.show()
+    
+    # plt.show()
     sim = Simulation(domain, fiber, initial_fields, boundary, config, mode_fields=mode_fields)
     sim.run()
-    
-    saved_temporal_fields = sim.saved_temporal_fields.cpu().numpy()
-    saved_spectrum = sim.saved_spectrum.cpu().numpy()
-    output_fields = sim.fields.fields[0].detach().cpu().numpy()
-            
-    plot_intensity(output_fields, radius=core_radius, extent=extent, title='Output Field')
+    output_fields = sim.fields.fields[0].cpu().numpy()
+    plot_intensity(output_fields, radius=core_radius, extent=extent, title='Input Field')
+    input_energy = calculate_total_energy(input_fields, dx=dx, dy=dy, dt=dt*1e-12)
+    output_energy = calculate_total_energy(input_fields, dx=dx, dy=dy, dt=dt*1e-12)
 
-    # plot_mode_energy_evolution(saved_fields, mode_fields, dz=L0/num_save*1e3)
+    print(f'input energy : {input_energy}')
+    print(f'output energy : {output_energy}')
 
-    plt.figure()
-    plt.imshow(saved_temporal_fields[0].real, aspect='auto', cmap='turbo', origin='lower', extent=[-0.5 * time_window, 0.5 * time_window, 0, L0])
-    plt.xlim(-1, 5)
-    plt.xlabel('Time (ps)')
-    plt.ylabel('Distance (m)')
-    plt.savefig(f'temporal_fields_{int(L0*100)}cm_{total_energy}nJ.png', dpi=300)
+    saved_total_fields = sim.saved_total_fields.detach().cpu().numpy()
+    np.save(f'example_total_fields_{Nx}_{total_energy}nJ_mode5.npy', saved_total_fields)
 
-    plt.figure()
-    plt.imshow(saved_spectrum[0].real, aspect='auto', cmap='turbo', origin='lower')
-    plt.savefig(f'spectrum_{int(L0*100)}cm_{total_energy}nJ.png', dpi=300)
+    if MODE_DECOMP_STEP > 0:
+        mode_coeffs = sim.mode_coeffs[0].detach().cpu().numpy()
+        np.save(f'mode_coeffs_{total_energy}nJ_mode5.npy', mode_coeffs)
 
     plt.show()

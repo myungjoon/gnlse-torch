@@ -79,10 +79,10 @@ class Simulation:
             NL = intensity
 
         fields = fields * torch.exp(1j * (self.Kin + self.fiber.n2 * self.k0 * NL) * self.domain.dz)
-
+        fields = fields * self.boundary.boundary
         fields = torch.fft.fftn(fields, dim=(1, 2, 3))
         fields = fields * torch.exp(1j  * self.D * self.domain.dz / 2)
-        fields = fields * self.boundary.boundary
+        
 
         if is_save_fields and self.cnt < self.config.num_save:
 

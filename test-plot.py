@@ -7,26 +7,29 @@ core_radius = 8e-6
 extent = (-16e-6, 16e-6, -16e-6, 16e-6)
 
 
-linear_fields = np.load('example_total_fields_0.1nJ.npy') 
+linear_fields = np.load('example_total_fields_64_0.01nJ_mode5.npy') 
 print(linear_fields.shape)
 print(linear_fields.dtype)
 linear_field = linear_fields[0]
 initial_field = linear_field[0]
 final_field = linear_field[-1]
 
-plot_intensity(initial_field, radius=core_radius, extent=extent, title='Input Field')
-plot_intensity(final_field, radius=core_radius, extent=extent, title='Final Field')
+# plot_intensity(initial_field, radius=core_radius, extent=extent, title='Input Field')
+# plot_intensity(final_field, radius=core_radius, extent=extent, title='Final Field')
 plot_pulse(initial_field, title='Input Pulse')
 plot_pulse(final_field, title='Final Pulse')
 
-nonlinear_fields = np.load('example_total_fields_5.0nJ.npy') 
-nonlinear_field = nonlinear_fields[0]
-initial_field = nonlinear_field[0]
-final_field = nonlinear_field[-1]
+# nonlinear_fields = np.load('example_total_fields_5.0nJ.npy') 
+# nonlinear_field = nonlinear_fields[0]
+# initial_field = nonlinear_field[0]
+# final_field = nonlinear_field[-1]
 
-plot_intensity(initial_field, radius=core_radius, extent=extent, title='Input Field')
-plot_intensity(final_field, radius=core_radius, extent=extent, title='Final Field')
-plot_pulse(initial_field, title='Input Pulse')
-plot_pulse(final_field, title='Final Pulse')
+# plot_intensity(initial_field, radius=core_radius, extent=extent, title='Input Field')
+# plot_intensity(final_field, radius=core_radius, extent=extent, title='Final Field')
+# plot_pulse(initial_field, title='Input Pulse')
+# plot_pulse(final_field, title='Final Pulse')
+
+for i in range(linear_field.shape[0]):
+    plot_intensity(linear_field[i], radius=core_radius, extent=extent, title=f'Field_{i}')
 
 plt.show()
