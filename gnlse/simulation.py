@@ -24,6 +24,7 @@ class SimConfig:
     ds_x: int = 1
     ds_y: int = 1
     ds_t: int = 1
+    mode_decomp_step: int = 0  # Modal decomposition every N steps (0 = disabled)
 
 class Simulation:
     def __init__(self, domain, fiber, fields, boundary, config, mode_fields=None):
@@ -103,16 +104,33 @@ class Simulation:
 
 
     def mode_decomposition(self, fields):
-        # overlap integral between fields and mode_fields
-        overlap = torch.sum(fields * self.mode_fields, axis=(-3,-2,-1))
+        # Complex inner product: c_n = ∫ E(x,y,t) * mode_n^*(x,y) dxdy
+        # fields: (batch, Nx, Ny, Nt), mode_fields: (num_modes, Nx, Ny)
+        # Result: (batch, num_modes, Nt)
+        mode_conj = torch.conj(self.mode_fields)  # (num_modes, Nx, Ny)
+        overlap = torch.einsum('bxyt,bmxy->bmt', fields, mode_conj)
         return overlap
 
     def run(self,):
         if self.fiber.hrw is not None:
             self.fiber.hrw = self.fiber.hrw.unsqueeze(0).unsqueeze(0).unsqueeze(0)
         # self.calculate_raman_response()
-        
+
         fields = self.fields.fields
+
+        # Initialize modal decomposition storage
+        if self.config.mode_decomp_step > 0 and self.mode_fields is not None:
+            num_modes = self.mode_fields.shape[1]
+            num_decomp_saves = self.domain.Nz // self.config.mode_decomp_step + 1
+            self.mode_coeffs = torch.zeros(
+                (self.config.batch_num, num_modes, num_decomp_saves, self.domain.Nt),
+                dtype=fields.dtype, device=self.device
+            )
+            self.mode_decomp_cnt = 0
+            # Save initial mode decomposition
+            self.mode_coeffs[:, :, self.mode_decomp_cnt, :] = self.mode_decomposition(fields)
+            self.mode_decomp_cnt += 1
+
         if self.config.num_save > 0:
             save_step = self.domain.Nz // self.config.num_save
             self.modes = torch.zeros((self.config.batch_num, self.config.num_save+1), dtype=fields.dtype, device=self.device)
@@ -134,11 +152,19 @@ class Simulation:
             save_step = -1
         fields = torch.fft.fftn(fields, dim=(1, 2, 3))
 
-        # for i in tqdm(range(self.domain.Nz), disable=is_slurm_job):   
-        for i in tqdm(range(self.domain.Nz)):   
+        # for i in tqdm(range(self.domain.Nz), disable=is_slurm_job):
+        for i in tqdm(range(self.domain.Nz)):
             is_save_fields = True if save_step > 0 and i % save_step == 0 else False
-                
+
             fields = self._propagate_one_step(fields, is_save_fields)
+
+            # Modal decomposition every N steps
+            if (self.config.mode_decomp_step > 0 and
+                self.mode_fields is not None and
+                (i + 1) % self.config.mode_decomp_step == 0):
+                fields_spatial = torch.fft.ifftn(fields, dim=(1, 2, 3))
+                self.mode_coeffs[:, :, self.mode_decomp_cnt, :] = self.mode_decomposition(fields_spatial)
+                self.mode_decomp_cnt += 1
 
         fields = torch.fft.ifftn(fields, dim=(1, 2, 3))
         self.fields.fields = fields

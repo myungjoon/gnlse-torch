@@ -17,6 +17,8 @@ DS_X = 1
 DS_Y = 1
 DS_T = 1
 
+MODE_DECOMP_STEP = 100
+
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
@@ -144,12 +146,14 @@ if __name__ == '__main__':
     fiber = Fiber(domain, n_core0, n_clad0, n2=n2, beta2=beta2, beta3=beta3, radius=core_radius,)
     boundary = Boundary(domain, boundary_type=boundary_type)
     config = SimConfig(wvl0=wvl0, dispersion=DISPERSION, kerr=KERR, raman=RAMAN, self_steeping=SELF_STEEPING,
-                            batch_num=BATCH_NUM, num_save=num_save, ds_x=DS_X, ds_y=DS_Y, ds_t=DS_T)
+                            batch_num=BATCH_NUM, num_save=num_save, ds_x=DS_X, ds_y=DS_Y, ds_t=DS_T, mode_decomp_step=MODE_DECOMP_STEP)
 
     print(f'batch size: {BATCH_NUM}')
     mode_fields = mode_fields.unsqueeze(0)
 
     coeffs = torch.ones(num_modes, dtype=complex_type)
+    coeffs = torch.randn(num_modes, dtype=complex_type)
+    print(f'coeffs: {coeffs}')
     # coeffs[:4] = 0
     # coeffs[5:] = 0
     coeffs = coeffs.to(device)
