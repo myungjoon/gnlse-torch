@@ -45,6 +45,9 @@ class Simulation:
         self.calculate_Dt()
         self.D = self.Dt + self.KZ
 
+        # FFT dimensions: 2D spatial for CW (Nt=1), 3D for pulsed
+        self.fft_dims = (1, 2) if domain.Nt == 1 else (1, 2, 3)
+
     def calculate_K(self):
         self.k0 = 2 * torch.pi / self.config.wvl0
         self.KZ = -(self.domain.KX[:,:,0]**2 + self.domain.KY[:,:,0]**2) / (2 * self.k0 * self.fiber.n_clad)
@@ -54,15 +57,19 @@ class Simulation:
         self.Kin = self.Kin[None, :, :, None]
 
     def calculate_Dt(self):
-        omega = self.domain.W[0, 0, :]                     # shape: (Nt,)
-        self.Dt = (self.fiber.beta2 * omega**2) / 2.0 + (self.fiber.beta3 * omega**3) / 6.0
-        self.Dt = self.Dt.view(1, 1, 1, -1)
+        if self.domain.Nt == 1:
+            # CW mode: no dispersion
+            self.Dt = torch.zeros(1, 1, 1, 1, dtype=self.domain.cdtype, device=self.device)
+        else:
+            omega = self.domain.W[0, 0, :]                     # shape: (Nt,)
+            self.Dt = (self.fiber.beta2 * omega**2) / 2.0 + (self.fiber.beta3 * omega**3) / 6.0
+            self.Dt = self.Dt.view(1, 1, 1, -1)
 
     def _propagate_one_step(self, fields, is_save_fields=False):
 
         # Linear propagation calculation (Half-step)
         fields = fields * torch.exp(1j  * self.D * self.domain.dz / 2)
-        fields = torch.fft.ifftn(fields, dim=(1, 2, 3))
+        fields = torch.fft.ifftn(fields, dim=self.fft_dims)
 
         # Nonlinear propagation calculation
         intensity = torch.abs(fields)**2
@@ -80,13 +87,13 @@ class Simulation:
 
         fields = fields * torch.exp(1j * (self.Kin + self.fiber.n2 * self.k0 * NL) * self.domain.dz)
         fields = fields * self.boundary.boundary
-        fields = torch.fft.fftn(fields, dim=(1, 2, 3))
+        fields = torch.fft.fftn(fields, dim=self.fft_dims)
         fields = fields * torch.exp(1j  * self.D * self.domain.dz / 2)
         
 
         if is_save_fields and self.cnt < self.config.num_save:
 
-            fields = torch.fft.ifftn(fields, dim=(1, 2, 3))
+            fields = torch.fft.ifftn(fields, dim=self.fft_dims)
             intensity = torch.abs(fields)**2
 
             if self.config.save_spatial:
@@ -98,7 +105,7 @@ class Simulation:
             if self.config.save_total:
                 self.saved_total_fields[:, self.cnt, ...] = fields
             self.cnt += 1
-            fields = torch.fft.fftn(fields, dim=(1, 2, 3))
+            fields = torch.fft.fftn(fields, dim=self.fft_dims)
 
         return fields
 
@@ -150,7 +157,7 @@ class Simulation:
             self.cnt += 1
         else:
             save_step = -1
-        fields = torch.fft.fftn(fields, dim=(1, 2, 3))
+        fields = torch.fft.fftn(fields, dim=self.fft_dims)
 
         # for i in tqdm(range(self.domain.Nz), disable=is_slurm_job):
         for i in tqdm(range(self.domain.Nz)):
@@ -162,11 +169,11 @@ class Simulation:
             if (self.config.mode_decomp_step > 0 and
                 self.mode_fields is not None and
                 (i + 1) % self.config.mode_decomp_step == 0):
-                fields_spatial = torch.fft.ifftn(fields, dim=(1, 2, 3))
+                fields_spatial = torch.fft.ifftn(fields, dim=self.fft_dims)
                 self.mode_coeffs[:, :, self.mode_decomp_cnt, :] = self.mode_decomposition(fields_spatial)
                 self.mode_decomp_cnt += 1
 
-        fields = torch.fft.ifftn(fields, dim=(1, 2, 3))
+        fields = torch.fft.ifftn(fields, dim=self.fft_dims)
         self.fields.fields = fields
         self.saved_total_fields[:, -1, ...] = fields
         # save_fields = fields[:, field_shape[1]//2-field_shape[1]//4:field_shape[1]//2+field_shape[1]//4, field_shape[2]//2-field_shape[2]//4:field_shape[2]//2+field_shape[2]//4, field_shape[3]//2-field_shape[3]//4:field_shape[3]//2+field_shape[3]//4]
