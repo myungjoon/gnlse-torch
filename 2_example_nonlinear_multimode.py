@@ -19,7 +19,7 @@ DS_X = 1
 DS_Y = 1
 DS_T = 1
 
-MODE_DECOMP_STEP = 0
+MODE_DECOMP_STEP = 100
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
@@ -184,10 +184,10 @@ if __name__ == '__main__':
     print(f'output energy : {output_energy}')
 
     saved_total_fields = sim.saved_total_fields.detach().cpu().numpy()
-    np.save(f'example_total_fields_{Nx}_{total_energy}nJ_mode5.npy', saved_total_fields)
+    np.save(f'example_total_fields_{Nx}_{total_energy}nJ_mode5_{precision}.npy', saved_total_fields)
 
     if MODE_DECOMP_STEP > 0:
         mode_coeffs = sim.mode_coeffs[0].detach().cpu().numpy()
-        np.save(f'mode_coeffs_{total_energy}nJ_mode5.npy', mode_coeffs)
+        np.save(f'mode_coeffs_{total_energy}nJ_mode5_{precision}.npy', mode_coeffs)
 
     plt.show()

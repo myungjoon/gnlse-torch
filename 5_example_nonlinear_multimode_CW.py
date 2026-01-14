@@ -19,14 +19,14 @@ DS_X = 1
 DS_Y = 1
 DS_T = 1
 
-MODE_DECOMP_STEP = 0
+MODE_DECOMP_STEP = 100
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
 
-precision = 'single'
+precision = 'double'
 
 if precision == 'double':
     real_type = torch.float64
@@ -155,10 +155,10 @@ if __name__ == '__main__':
     print(f'batch size: {BATCH_NUM}')
     mode_fields = mode_fields.unsqueeze(0)
 
-    coeffs = torch.ones(num_modes, dtype=complex_type)
+    coeffs = torch.zeros(num_modes, dtype=complex_type)
     # coeffs = torch.randn(num_modes, dtype=complex_type)
-    coeffs[:4] = 0
-    coeffs[5:] = 0
+    # coeffs[:4] = 0
+    coeffs[1] = 1.0
     print(f'coeffs: {coeffs}')
     coeffs = coeffs.to(device)
     coeffs = torch.reshape(coeffs, (-1, num_modes, 1, 1))
@@ -184,10 +184,10 @@ if __name__ == '__main__':
     print(f'output energy : {output_energy}')
 
     saved_total_fields = sim.saved_total_fields.detach().cpu().numpy()
-    np.save(f'example_total_fields_{Nx}_{total_energy}nJ_mode5.npy', saved_total_fields)
+    np.save(f'example_total_fields_{Nx}_{total_energy}nJ_mode5_{precision}.npy', saved_total_fields)
 
     if MODE_DECOMP_STEP > 0:
         mode_coeffs = sim.mode_coeffs[0].detach().cpu().numpy()
-        np.save(f'mode_coeffs_{total_energy}nJ_mode5.npy', mode_coeffs)
+        np.save(f'mode_coeffs_{total_energy}nJ_mode5_{precision}.npy', mode_coeffs)
 
     plt.show()
