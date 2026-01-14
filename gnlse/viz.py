@@ -233,3 +233,10 @@ def plot_intensity(field, radius=None, extent=None, title=None):
     if title is not None:
         plt.title(title, fontsize=18)
     plt.savefig(f'intensity_{title}.png', dpi=300)
+
+def plot_pulse(field, title=None):
+    plt.figure(figsize=(5,5.5), layout='constrained')
+    plt.plot(np.sum(np.abs(field)**2, axis=(0,1)))
+    if title is not None:
+        plt.title(title, fontsize=18)
+    plt.savefig(f'pulse_{title}.png', dpi=300)

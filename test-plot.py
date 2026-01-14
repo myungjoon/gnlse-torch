@@ -1,0 +1,32 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from gnlse import plot_intensity, plot_pulse
+plt.rcParams['font.size'] = 15
+
+core_radius = 8e-6
+extent = (-16e-6, 16e-6, -16e-6, 16e-6)
+
+
+linear_fields = np.load('example_total_fields_0.1nJ.npy') 
+print(linear_fields.shape)
+print(linear_fields.dtype)
+linear_field = linear_fields[0]
+initial_field = linear_field[0]
+final_field = linear_field[-1]
+
+plot_intensity(initial_field, radius=core_radius, extent=extent, title='Input Field')
+plot_intensity(final_field, radius=core_radius, extent=extent, title='Final Field')
+plot_pulse(initial_field, title='Input Pulse')
+plot_pulse(final_field, title='Final Pulse')
+
+nonlinear_fields = np.load('example_total_fields_5.0nJ.npy') 
+nonlinear_field = nonlinear_fields[0]
+initial_field = nonlinear_field[0]
+final_field = nonlinear_field[-1]
+
+plot_intensity(initial_field, radius=core_radius, extent=extent, title='Input Field')
+plot_intensity(final_field, radius=core_radius, extent=extent, title='Final Field')
+plot_pulse(initial_field, title='Input Pulse')
+plot_pulse(final_field, title='Final Pulse')
+
+plt.show()
