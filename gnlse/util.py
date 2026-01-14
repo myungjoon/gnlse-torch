@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import os
-from scipy import stats
+# from scipy import stats
 
 def n_to_lm(n):
     """
@@ -52,39 +52,39 @@ def n_to_lm(n):
         group_sum += 1
 
 
-def correlation(field_ref, field_test):
-    """
-    Calculate the Pearson correlation coefficient between two complex fields
-    based on their intensity distributions.
+# def correlation(field_ref, field_test):
+#     """
+#     Calculate the Pearson correlation coefficient between two complex fields
+#     based on their intensity distributions.
 
-    Parameters
-    ----------
-    field_ref : ndarray
-        Reference complex field (Nx, Ny, ...).
-    field_test : ndarray
-        Test or simulated complex field of the same shape as field_ref.
+#     Parameters
+#     ----------
+#     field_ref : ndarray
+#         Reference complex field (Nx, Ny, ...).
+#     field_test : ndarray
+#         Test or simulated complex field of the same shape as field_ref.
 
-    Returns
-    -------
-    corr : float
-        Pearson correlation coefficient between intensity patterns.
-    p_value : float
-        Two-tailed p-value for testing non-correlation.
-    """
+#     Returns
+#     -------
+#     corr : float
+#         Pearson correlation coefficient between intensity patterns.
+#     p_value : float
+#         Two-tailed p-value for testing non-correlation.
+#     """
     
 
-    # Convert to intensity
-    I_ref = np.abs(field_ref)**2
-    I_test = np.abs(field_test)**2
+#     # Convert to intensity
+#     I_ref = np.abs(field_ref)**2
+#     I_test = np.abs(field_test)**2
 
-    # Normalize
-    I_ref = (I_ref - np.mean(I_ref)) / np.std(I_ref)
-    I_test = (I_test - np.mean(I_test)) / np.std(I_test)
+#     # Normalize
+#     I_ref = (I_ref - np.mean(I_ref)) / np.std(I_ref)
+#     I_test = (I_test - np.mean(I_test)) / np.std(I_test)
 
-    # Flatten and compute Pearson correlation
-    corr, p_value = stats.pearsonr(I_ref.flatten(), I_test.flatten())
+#     # Flatten and compute Pearson correlation
+#     corr, p_value = stats.pearsonr(I_ref.flatten(), I_test.flatten())
 
-    return corr, p_value
+#     return corr, p_value
 
 def print_total_energy(domain, field):
     """
@@ -137,19 +137,19 @@ def print_total_energy(domain, field):
         E_value = float(E_total)
     print(f"Total energy: {E_value:.6g} (units per your normalization)")
 
-def correlation(simulation, reference, dx=1e-6):
-    """
-    Calculate the correlation between two fields.
-    """
-    reference = np.abs(reference)**2
-    simulation = np.abs(simulation)**2
+# def correlation(simulation, reference, dx=1e-6):
+#     """
+#     Calculate the correlation between two fields.
+#     """
+#     reference = np.abs(reference)**2
+#     simulation = np.abs(simulation)**2
 
-    reference = (reference - np.mean(reference)) / np.std(reference)
-    simulation = (simulation - np.mean(simulation)) / np.std(simulation)
+#     reference = (reference - np.mean(reference)) / np.std(reference)
+#     simulation = (simulation - np.mean(simulation)) / np.std(simulation)
 
-    corr, p_value = stats.pearsonr(reference.flatten(), simulation.flatten())
-    print(f"Pearson Correlation: {corr:.4f}, p-value: {p_value:.4e}")
-    return corr, p_value
+#     corr, p_value = stats.pearsonr(reference.flatten(), simulation.flatten())
+#     print(f"Pearson Correlation: {corr:.4f}, p-value: {p_value:.4e}")
+#     return corr, p_value
 
 def save_results(results_dict, base_dir="results"):
     """

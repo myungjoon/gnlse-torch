@@ -232,3 +232,4 @@ def plot_intensity(field, radius=None, extent=None, title=None):
     plt.yticks([])
     if title is not None:
         plt.title(title, fontsize=18)
+    plt.savefig(f'intensity_{title}.png', dpi=300)

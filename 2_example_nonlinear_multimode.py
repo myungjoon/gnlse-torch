@@ -8,7 +8,7 @@ from gnlse import plot_fields, plot_index_profile, plot_intensity
 
 
 DISPERSION = True
-KERR = False
+KERR = True
 RAMAN = False
 SELF_STEEPING = False
 
@@ -48,11 +48,11 @@ if __name__ == '__main__':
     L0 = 0.1
 
     # Pulse
-    total_energy = 10.0 # nJ
+    total_energy = 5.0 # nJ
     Nt = 2**11
     time_window = 10 # ps
     dt = time_window / Nt
-    tfwhm = 1.0 # ps
+    tfwhm = 0.1 # ps
     t = np.linspace(-0.5 * time_window, 0.5 * time_window, Nt)
 
     dz = 1.0e-6
@@ -64,6 +64,7 @@ if __name__ == '__main__':
     NA = 0.14
     n_core0 = 1.45
     n_clad0 = np.sqrt(n_core0**2 - NA**2)
+    n2 = 2.3e-20
 
     # Simulation domain parameters
     Lx, Ly = 4 * core_radius, 4 * core_radius
@@ -109,9 +110,27 @@ if __name__ == '__main__':
         # Calculate the next order for differentiation
         current_poly = np.polyder(current_poly)
 
-    beta2 = betas[2]*1e6
+    beta2 = betas[2]*1e6    
     beta3 = betas[3]*1e6
     print(f"beta2: {beta2}, beta3: {beta3}", flush=True)
+
+    A_eff = 5.0e-11
+    P0 = 0.94 * total_energy * 1e-9 / (tfwhm * 1e-12)
+
+    w0_ = 2 * np.pi * (3e8 / wvl0)
+    gamma = n2 * w0_ / (3e8 * A_eff)
+    
+
+    L_d = (tfwhm/1.665)**2 / abs(beta2)
+    L_nl = 1 / (gamma * P0) 
+    print(f'P0 = {P0} W')
+    print(f'A_eff = {A_eff} m')
+    
+    
+    print(f'L_d = {L_d}')
+    print(f'L_nl = {L_nl}')
+
+    print(f'L_d/L_nl = {L_d/L_nl}')
 
     # Boundary condition
     boundary_type = 'periodic'
@@ -122,7 +141,7 @@ if __name__ == '__main__':
     mode_fields = torch.tensor(mode_fields, dtype=complex_type, device=device)
 
     domain = Domain(Lx, Ly, time_window, Nx, Ny, Nt, Nz, dz, precision=precision, device=device)
-    fiber = Fiber(domain, n_core0, n_clad0, beta2=beta2, beta3=beta3, radius=core_radius,)
+    fiber = Fiber(domain, n_core0, n_clad0, n2=n2, beta2=beta2, beta3=beta3, radius=core_radius,)
     boundary = Boundary(domain, boundary_type=boundary_type)
     config = SimConfig(wvl0=wvl0, dispersion=DISPERSION, kerr=KERR, raman=RAMAN, self_steeping=SELF_STEEPING,
                             batch_num=BATCH_NUM, num_save=num_save, ds_x=DS_X, ds_y=DS_Y, ds_t=DS_T)

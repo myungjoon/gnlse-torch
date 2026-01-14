@@ -8,11 +8,11 @@ from gnlse import plot_fields, plot_index_profile, plot_intensity
 
 
 DISPERSION = True
-KERR = False
+KERR = True
 RAMAN = False
 SELF_STEEPING = False
 
-BATCH_NUM = 1
+BATCH_NUM = 16
 DS_X = 1
 DS_Y = 1
 DS_T = 1
@@ -43,16 +43,16 @@ def get_n_core(wvl, B, C):
 
 if __name__ == '__main__':
 
-    num_save = 50
+    num_save = 20
     wvl0 = 1030e-9
     L0 = 0.1
 
     # Pulse
     total_energy = 10.0 # nJ
     Nt = 2**11
-    time_window = 10 # ps
+    time_window = 5 # ps
     dt = time_window / Nt
-    tfwhm = 1.0 # ps
+    tfwhm = 0.1 # ps
     t = np.linspace(-0.5 * time_window, 0.5 * time_window, Nt)
 
     dz = 1.0e-6
@@ -64,16 +64,17 @@ if __name__ == '__main__':
     NA = 0.14
     n_core0 = 1.45
     n_clad0 = np.sqrt(n_core0**2 - NA**2)
+    n2 = 2.3e-20
 
     # Simulation domain parameters
     Lx, Ly = 4 * core_radius, 4 * core_radius
     unit = 1e-6
-    Nx, Ny = 128, 128
+    Nx, Ny = 64, 64
     print(f'The grid size is {Nx}x{Ny}')
     
     Nf = 20
     c = 299.792458
-    freq_range = 100  
+    freq_range = 40  
     freq_min = c/wvl0*1e-6 + freq_range/2
     freq_max = c/wvl0*1e-6 - freq_range/2
     
@@ -118,11 +119,11 @@ if __name__ == '__main__':
 
     # custom mode input fields
     num_modes = 6
-    mode_fields = np.load('modes_128x128.npy')
+    mode_fields = np.load(f'modes_{Nx}x{Ny}.npy')
     mode_fields = torch.tensor(mode_fields, dtype=complex_type, device=device)
 
     domain = Domain(Lx, Ly, time_window, Nx, Ny, Nt, Nz, dz, precision=precision, device=device)
-    fiber = Fiber(domain, n_core0, n_clad0, beta2=beta2, beta3=beta3, radius=core_radius,)
+    fiber = Fiber(domain, n_core0, n_clad0, n2=n2, beta2=beta2, beta3=beta3, radius=core_radius,)
     boundary = Boundary(domain, boundary_type=boundary_type)
     config = SimConfig(wvl0=wvl0, dispersion=DISPERSION, kerr=KERR, raman=RAMAN, self_steeping=SELF_STEEPING,
                             batch_num=BATCH_NUM, num_save=num_save, ds_x=DS_X, ds_y=DS_Y, ds_t=DS_T)
@@ -130,9 +131,9 @@ if __name__ == '__main__':
     print(f'batch size: {BATCH_NUM}')
     mode_fields = mode_fields.unsqueeze(0)
 
-    coeffs = torch.ones(num_modes, dtype=complex_type)
-    # coeffs[:4] = 0
-    # coeffs[5:] = 0
+    # coeffs = torch.ones(num_modes, dtype=complex_type)
+    coeffs = torch.randn((BATCH_NUM,num_modes), dtype=complex_type)
+    print(f'coeffs : {coeffs}')
     coeffs = coeffs.to(device)
     coeffs = torch.reshape(coeffs, (-1, num_modes, 1, 1))
     input_fields = torch.sum(coeffs * mode_fields, dim=1)
@@ -145,23 +146,26 @@ if __name__ == '__main__':
     sim = Simulation(domain, fiber, initial_fields, boundary, config, mode_fields=mode_fields)
     sim.run()
     
-    saved_temporal_fields = sim.saved_temporal_fields.cpu().numpy()
-    saved_spectrum = sim.saved_spectrum.cpu().numpy()
+
+    saved_total_fields = sim.saved_total_fields.detach().cpu().numpy()
     output_fields = sim.fields.fields[0].detach().cpu().numpy()
-            
+    print(f'saved_total_fields : {saved_total_fields.shape}')
+    np.save('total_fields_10nJ_1.npy', saved_total_fields)
+    print('save complete')
+
     plot_intensity(output_fields, radius=core_radius, extent=extent, title='Output Field')
 
     # plot_mode_energy_evolution(saved_fields, mode_fields, dz=L0/num_save*1e3)
 
-    plt.figure()
-    plt.imshow(saved_temporal_fields[0].real, aspect='auto', cmap='turbo', origin='lower', extent=[-0.5 * time_window, 0.5 * time_window, 0, L0])
-    plt.xlim(-1, 5)
-    plt.xlabel('Time (ps)')
-    plt.ylabel('Distance (m)')
-    plt.savefig(f'temporal_fields_{int(L0*100)}cm_{total_energy}nJ.png', dpi=300)
+    # plt.figure()
+    # plt.imshow(saved_temporal_fields[0].real, aspect='auto', cmap='turbo', origin='lower', extent=[-0.5 * time_window, 0.5 * time_window, 0, L0])
+    # plt.xlim(-1, 5)
+    # plt.xlabel('Time (ps)')
+    # plt.ylabel('Distance (m)')
+    # plt.savefig(f'temporal_fields_{int(L0*100)}cm_{total_energy}nJ.png', dpi=300)
 
-    plt.figure()
-    plt.imshow(saved_spectrum[0].real, aspect='auto', cmap='turbo', origin='lower')
-    plt.savefig(f'spectrum_{int(L0*100)}cm_{total_energy}nJ.png', dpi=300)
+    # plt.figure()
+    # plt.imshow(saved_spectrum[0].real, aspect='auto', cmap='turbo', origin='lower')
+    # plt.savefig(f'spectrum_{int(L0*100)}cm_{total_energy}nJ.png', dpi=300)
 
     plt.show()
