@@ -1,7 +1,7 @@
 import torch
 
 class Fiber:
-    def __init__(self, domain, n_core, n_clad, beta2=0, beta3=0, n2=0, radius=25e-6, hrw=None):
+    def __init__(self, domain, n_core, n_clad, custom_n=None, beta2=0, beta3=0, n2=0, radius=25e-6, hrw=None):
         self.domain = domain
         self.n_core = n_core
         self.n_clad = n_clad
@@ -10,7 +10,10 @@ class Fiber:
         self.beta3 = beta3
         self.radius = radius
         self.hrw = hrw
-        self.n = self.create_fiber()
+        if custom_n is not None:
+            self.n = custom_n
+        else:
+            self.n = self.create_fiber()
         
     def create_fiber(self,):
         if self.domain.X.shape[0] > 2:

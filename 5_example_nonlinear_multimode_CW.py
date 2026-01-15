@@ -52,7 +52,8 @@ if __name__ == '__main__':
     L0 = 0.1
 
     # Pulse
-    total_energy = 0.01 # nJ
+    total_energy = 10.0 # nJ
+    peak_power = 50000.0 # W
     Nt = 1
     time_window = 4 # ps
     dt = time_window / Nt
@@ -69,11 +70,12 @@ if __name__ == '__main__':
     n_core0 = 1.45
     n_clad0 = np.sqrt(n_core0**2 - NA**2)
     n2 = 2.3e-20
-
+    n = np.load('n.npy')
+    n = torch.tensor(n, dtype=complex_type, device=device)
     # Simulation domain parameters
-    Lx, Ly = 4 * core_radius, 4 * core_radius
+    Lx, Ly = 8 * core_radius, 8 * core_radius
     unit = 1e-6
-    Nx, Ny = 64, 64
+    Nx, Ny = 256, 256
     print(f'The grid size is {Nx}x{Ny}')
     dx, dy = Lx / Nx, Ly / Ny
 
@@ -146,44 +148,53 @@ if __name__ == '__main__':
     mode_fields = np.load(f'modes_{Nx}x{Ny}.npy')
     mode_fields = torch.tensor(mode_fields, dtype=complex_type, device=device)
 
+    # normalize mode_fields, each mode should have the same energy
+    mode_fields = mode_fields / torch.sqrt(torch.sum(torch.abs(mode_fields)**2, dim=(1,2), keepdim=True))
+
+    # new_mode_fields = np.load('final_field.npy')
+    # new_mode_fields = torch.tensor(new_mode_fields, dtype=complex_type, device=device)
+    # new_mode_fields = new_mode_fields.unsqueeze(0).unsqueeze(0).squeeze(-1)
     domain = Domain(Lx, Ly, time_window, Nx, Ny, Nt, Nz, dz, precision=precision, device=device)
-    fiber = Fiber(domain, n_core0, n_clad0, n2=n2, beta2=beta2, beta3=beta3, radius=core_radius,)
+    fiber = Fiber(domain, n_core0, n_clad0, custom_n=n, n2=n2, beta2=beta2, beta3=beta3, radius=core_radius,)
     boundary = Boundary(domain, boundary_type=boundary_type)
     config = SimConfig(wvl0=wvl0, dispersion=DISPERSION, kerr=KERR, raman=RAMAN, self_steeping=SELF_STEEPING,
                             batch_num=BATCH_NUM, num_save=num_save, ds_x=DS_X, ds_y=DS_Y, ds_t=DS_T, mode_decomp_step=MODE_DECOMP_STEP)
 
     print(f'batch size: {BATCH_NUM}')
-    mode_fields = mode_fields.unsqueeze(0)
+    # mode_fields = mode_fields.unsqueeze(0)
 
-    coeffs = torch.zeros(num_modes, dtype=complex_type)
-    # coeffs = torch.randn(num_modes, dtype=complex_type)
+    # coeffs = torch.zeros(num_modes, dtype=complex_type)
+    coeffs = torch.ones(num_modes, dtype=complex_type)
+    # coeffs[0] = 5.0
     # coeffs[:4] = 0
-    coeffs[1] = 1.0
+    coeffs[3] = 1.5
     print(f'coeffs: {coeffs}')
     coeffs = coeffs.to(device)
     coeffs = torch.reshape(coeffs, (-1, num_modes, 1, 1))
     input_fields = torch.sum(coeffs * mode_fields, dim=1)
-    initial_fields = Fields(domain, input_type='custom', fields=input_fields, tfwhm=tfwhm, total_energy=total_energy, t_center=0,)
+    initial_fields = Fields(domain, input_type='custom', fields=input_fields, tfwhm=tfwhm, total_energy=total_energy, peak_power=peak_power, t_center=0,)
 
     extent = [-Lx/2, Lx/2, -Ly/2, Ly/2]
     input_fields = initial_fields.fields[0].cpu().numpy()
     
-
-
     plot_intensity(input_fields, radius=core_radius, extent=extent, title='Input Field')
-    
-    # plt.show()
+    plt.colorbar()
+    plt.show()
     sim = Simulation(domain, fiber, initial_fields, boundary, config, mode_fields=mode_fields)
     sim.run()
     output_fields = sim.fields.fields[0].cpu().numpy()
-    plot_intensity(output_fields, radius=core_radius, extent=extent, title='Input Field')
+
+
+
+    plot_intensity(output_fields, radius=core_radius, extent=extent, title='Output Field')
     input_energy = calculate_total_energy(input_fields, dx=dx, dy=dy, dt=dt*1e-12)
-    output_energy = calculate_total_energy(input_fields, dx=dx, dy=dy, dt=dt*1e-12)
+    output_energy = calculate_total_energy(output_fields, dx=dx, dy=dy, dt=dt*1e-12)
 
     print(f'input energy : {input_energy}')
     print(f'output energy : {output_energy}')
 
     saved_total_fields = sim.saved_total_fields.detach().cpu().numpy()
+    saved_total_fields = saved_total_fields[:, :, 64:-64, 64:-64, :]
     np.save(f'example_total_fields_{Nx}_{total_energy}nJ_mode5_{precision}.npy', saved_total_fields)
 
     if MODE_DECOMP_STEP > 0:

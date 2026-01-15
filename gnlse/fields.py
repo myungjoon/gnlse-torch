@@ -10,15 +10,18 @@ class Fields:
                  total_energy=150.0,
                  t_center=0.0,
                  cx=0.0, cy=0.0,
+                 peak_power=1.0,
                  phase_map=None):
 
         self.domain = domain
         self.total_energy = float(total_energy)
+        self.peak_power = float(peak_power)
         self.t_center = float(t_center)
 
         self.device = domain.device
         self.rdtype = domain.rdtype
         self.cdtype = domain.cdtype
+
         
         # Spatial Gaussian Beam
         if input_type == 'gaussian':
@@ -44,7 +47,10 @@ class Fields:
         dx = domain.Lx / domain.Nx
         dy = domain.Ly / domain.Ny
         dt = domain.time_window / domain.Nt
-        fields = self._normalize_to_energy(fields, dx, dy, dt, self.total_energy)
+        if self.domain.Nt == 1:
+            fields = self._normalize_to_power(fields, dx, dy, P_target=self.peak_power)
+        else:   
+            fields = self._normalize_to_energy(fields, dx, dy, dt, self.total_energy)
         self.fields = fields
 
     @staticmethod
@@ -72,6 +78,13 @@ class Fields:
         temporal_profile = torch.exp(phase).to(cdtype)  # (Nt,), complex
         return temporal_profile
 
+
+    @staticmethod
+    def _normalize_to_power(fields, dx, dy, P_target):
+        intensity = torch.abs(fields)**2
+        P_current = intensity.sum(dim=(1, 2, 3)) * (dx * dy)
+        scale = torch.sqrt(torch.as_tensor(P_target, dtype=intensity.dtype, device=fields.device) / P_current)
+        return fields * scale.view(-1, 1, 1, 1)
 
     @staticmethod
     def _normalize_to_energy(fields, dx, dy, dt, E_target):

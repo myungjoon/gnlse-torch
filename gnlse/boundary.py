@@ -12,5 +12,7 @@ class Boundary:
         elif boundary_type == "absorbing":
             radius = self.domain.Lx * 0.8
             boundary = torch.exp(-2*((torch.sqrt(self.domain.X[:,:,0:1]**2+self.domain.Y[:,:,0:1]**2)/radius)**10))
+            # boundary inside of radius is 1
+            boundary = torch.where(torch.sqrt(self.domain.X[:,:,0:1]**2+self.domain.Y[:,:,0:1]**2) < 0.4 * self.domain.Lx, 1.0, boundary)
             boundary = boundary.unsqueeze(0)
         return boundary

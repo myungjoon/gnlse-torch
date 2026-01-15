@@ -115,7 +115,7 @@ class Simulation:
         # fields: (batch, Nx, Ny, Nt), mode_fields: (num_modes, Nx, Ny)
         # Result: (batch, num_modes, Nt)
         mode_conj = torch.conj(self.mode_fields)  # (num_modes, Nx, Ny)
-        overlap = torch.einsum('bxyt,bmxy->bmt', fields, mode_conj)
+        overlap = torch.einsum('bxyt,mxy->bmt', fields, mode_conj)
         return overlap
 
     def run(self,):
@@ -127,7 +127,7 @@ class Simulation:
 
         # Initialize modal decomposition storage
         if self.config.mode_decomp_step > 0 and self.mode_fields is not None:
-            num_modes = self.mode_fields.shape[1]
+            num_modes = self.mode_fields.shape[0]
             num_decomp_saves = self.domain.Nz // self.config.mode_decomp_step + 1
             self.mode_coeffs = torch.zeros(
                 (self.config.batch_num, num_modes, num_decomp_saves, self.domain.Nt),
